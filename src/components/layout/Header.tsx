@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/Feedback'
 import { IS_DEMO } from '@/config/env'
 import { ROLE_LABELS } from '@/domain/permissions'
 import { useAlerts } from '@/hooks/useAlerts'
-import { useList, useSettings } from '@/hooks/useData'
+import { useBranch } from '@/hooks/useBranch'
+import { useList } from '@/hooks/useData'
 import { erp } from '@/services'
 import { useQuery } from '@tanstack/react-query'
 
@@ -77,10 +78,8 @@ export function Header({ onMenu }: { onMenu: () => void }) {
   const { user, can, loginDemo, logout } = useAuth()
   const nav = useNavigate()
   const alerts = useAlerts()
-  const settings = useSettings()
+  const { branches, active, setActive } = useBranch()
   const demoUsers = useQuery({ queryKey: ['demo-users'], queryFn: () => erp.auth.listDemoUsers(), enabled: IS_DEMO })
-  const [branch, setBranch] = useState(() => { try { return localStorage.getItem('aurum.branch') ?? 'br-main' } catch { return 'br-main' } })
-  const branches = settings.data?.branches ?? []
   const actions = [
     { label: 'New Sale', to: '/sales/new', perm: 'sales.create' as const },
     { label: 'New Purchase', to: '/purchases/new', perm: 'purchases.manage' as const },
@@ -118,7 +117,7 @@ export function Header({ onMenu }: { onMenu: () => void }) {
         </Popover>
         {branches.length > 0 && (
           <label className="hidden items-center gap-1.5 text-[12.5px] text-ink-2 xl:flex"><Store size={15} aria-hidden />
-            <select aria-label="Shop / branch" value={branch} onChange={(e) => { setBranch(e.target.value); try { localStorage.setItem('aurum.branch', e.target.value) } catch { /* ignore */ } }} className="h-8 rounded-md border border-line bg-white px-1.5">
+            <select aria-label="Shop / branch" value={active?.id ?? ''} onChange={(e) => setActive(e.target.value)} className="h-8 rounded-md border border-line bg-white px-1.5">
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>

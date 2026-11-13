@@ -12,6 +12,7 @@ import { unallocatedAmount } from '@/domain/calculations/ledger'
 import { invoiceTotals, priceItem } from '@/domain/calculations/pricing'
 import { sellBlockReason } from '@/domain/workflows/rules'
 import { useAction, useIndex, useList, useMasters } from '@/hooks/useData'
+import { useBranch } from '@/hooks/useBranch'
 import { erp } from '@/services'
 import type { PaymentMode, StockItem } from '@/types/entities'
 import { fmtMoney, fmtNum, fmtW } from '@/utils/format'
@@ -23,6 +24,7 @@ let payId = 1
 export default function PosPage() {
   const nav = useNavigate()
   const toast = useToast()
+  const { active: branch } = useBranch()
   const m = useMasters()
   const items = useList('stockItems'), rates = useList('metalRates'), pays = useList('payments')
   const itemMap = useIndex(items.data)
@@ -78,7 +80,7 @@ export default function PosPage() {
 
   const quickPay = (mode: PaymentMode) => setPayments((p) => [...p, { id: payId++, mode, amount: String(Math.max(balance, 0)), reference: '' }])
   const save = useAction(() => erp.commands.sales.create({
-    customerId: customer?.id ?? null, walkInName: walkName, walkInPhone: walkPhone, notes,
+    branchId: branch?.id, customerId: customer?.id ?? null, walkInName: walkName, walkInPhone: walkPhone, notes,
     items: cart.map((c) => ({ stockItemId: c.id, discount: Number(c.discount) || 0 })),
     payments: payments.filter((p) => Number(p.amount) > 0).map((p) => ({ mode: p.mode, amount: Number(p.amount), reference: p.reference })), advanceAdjust: advanceUsed,
   }), { success: (s) => `Invoice ${s.invoiceNo} issued`, onSuccess: (s) => nav(`/sales/${s.id}?print=1`) })
@@ -88,7 +90,7 @@ export default function PosPage() {
 
   return (
     <div className="fade-in">
-      <PageHeader back="/sales" title="New sale" subtitle="Scan or search items, choose the customer, collect payment, issue the invoice." />
+      <PageHeader back="/sales" title="New sale" subtitle={`Branch: ${branch?.name ?? "—"} · scan or search items, choose the customer, collect payment, issue the invoice.`} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="min-w-0 space-y-3">
           <Card>

@@ -41,7 +41,7 @@ src/
 ## Known gaps / next steps
 1. Backend implementation (CodeIgniter 4) from the documented contract.
 2. Committed Playwright E2E suite for the 7 workflows; axe accessibility run.
-3. Server-side pagination & report endpoints; branch dimension (`branch_id`) — the demo branch selector is cosmetic.
+3. Server-side pagination & report endpoints; branch dimension (`branch_id`) — the demo branches are stamped on sales only (stock is not yet branch-scoped).
 4. IGST / interstate, e-invoice, TCS/TDS; old-gold exchange / scheme (chit) modules; hallmark (HUID) verification.
 5. Hardware: thermal label printer profiles (TSPL/ZPL), customer display, cash drawer.
 6. Image storage off base64; data export/import tool for pilots.

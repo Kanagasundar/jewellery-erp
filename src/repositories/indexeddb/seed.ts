@@ -90,7 +90,7 @@ const RATE: Record<string, number> = { '24K': 12150, '22K': 11140, '18K': 9110, 
 const DRIFT = [0.93, 0.95, 0.97, 0.985, 1]
 
 const SETTINGS: Settings = {
-  id: 'main', shopName: 'Aurum Jewellers', tagline: 'Fine jewellery since 1987', address: '12, Jewellers Row, Demo City – 600 001', phone: '+91 98400 00000',
+  id: 'main', shopName: 'Samayan Jewellers', tagline: 'Fine jewellery since 1987', address: '12, Jewellers Row, Demo City – 600 001', phone: '+91 98400 00000',
   gstin: '33AAAAA0000A1Z5 (sample)', defaultGstPercent: 3, invoicePrefix: 'INV', labelSize: 'medium', allowNegativeStock: false,
   showPriceOnLabel: false, weightTolerance: 0.01, branches: [{ id: 'br-main', name: 'Main Showroom' }, { id: 'br-2', name: 'Branch 2 (demo)' }],
 }
@@ -110,6 +110,9 @@ export async function resetAndSeed() {
 
 export async function ensureSeeded() {
   if (!(await isSeeded())) await resetAndSeed()
+  // one-time rename of the previous untouched default name
+  const s = await db.settings.get('main')
+  if (s && s.shopName === 'Aurum Jewellers') await db.settings.put({ ...s, shopName: 'Samayan Jewellers' })
 }
 
 async function seedMaster() {

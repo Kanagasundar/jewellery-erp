@@ -321,6 +321,8 @@ export interface Sale extends Audited {
   customerId: ID | null
   customerName: string
   customerPhone: string
+  branchId?: string
+  branchName?: string
   status: 'completed' | 'cancelled'
   lines: SaleLine[]
   subtotal: number

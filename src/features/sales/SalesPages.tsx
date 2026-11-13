@@ -32,6 +32,7 @@ export function SalesListPage() {
   const cols: Column<Sale>[] = [
     { key: 'inv', header: 'Invoice', value: (s) => s.invoiceNo, render: (s) => <span className="font-mono text-[12px] font-medium">{s.invoiceNo}</span> },
     { key: 'date', header: 'Date', value: (s) => s.date, render: (s) => fmtDateTime(s.date) },
+    { key: 'branch', header: 'Branch', value: (s) => s.branchName ?? '', render: (s) => <span className="text-muted">{s.branchName ?? '—'}</span> },
     { key: 'cust', header: 'Customer', value: (s) => s.customerName, render: (s) => <span className="font-medium">{s.customerName}</span> },
     { key: 'items', header: 'Items', num: true, value: (s) => s.lines.length },
     { key: 'total', header: 'Total (₹)', num: true, value: (s) => s.total, render: (s) => fmtNum(s.total), footer: (r) => fmtNum(money(sum(r.filter((x) => x.status === 'completed').map((x) => x.total)))) },
@@ -92,7 +93,7 @@ export function InvoicePage() {
       <article className="print-area card mx-auto max-w-[1000px] bg-white p-5 sm:p-8" aria-label="Tax invoice">
         {s.status === 'cancelled' && <p className="mb-2 text-center text-[22px] font-bold tracking-[0.3em] text-bad uppercase">Cancelled</p>}
         <header className="flex flex-wrap items-start justify-between gap-4 border-b-2 border-ink pb-4">
-          <div><h2 className="font-display text-[30px] leading-none font-semibold">{cfg?.shopName}</h2><p className="mt-1 text-[11.5px] text-muted">{cfg?.tagline}</p><p className="mt-2 max-w-xs text-[12px]">{cfg?.address}</p><p className="text-[12px]">Ph: {cfg?.phone} · GSTIN: {cfg?.gstin}</p></div>
+          <div><h2 className="font-display text-[30px] leading-none font-semibold">{cfg?.shopName}</h2><p className="mt-1 text-[11.5px] text-muted">{cfg?.tagline}</p><p className="mt-2 max-w-xs text-[12px]">{cfg?.address}</p>{s.branchName && <p className="text-[12px] font-medium">Branch: {s.branchName}</p>}<p className="text-[12px]">Ph: {cfg?.phone} · GSTIN: {cfg?.gstin}</p></div>
           <div className="text-right"><p className="font-display text-[22px] font-semibold tracking-wide uppercase">Tax Invoice</p><p className="font-mono text-[13px]">{s.invoiceNo}</p><p className="text-[12px]">{fmtDate(s.date)}</p></div>
         </header>
         <section className="grid gap-4 py-3 text-[12.5px] sm:grid-cols-2"><div><p className="label-xs">Billed to</p><p className="font-medium">{s.customerName}</p>{s.customerPhone && <p>{s.customerPhone}</p>}{s.customerId && <p className="text-muted">{m.customerMap.get(s.customerId)?.address}</p>}{s.customerId && m.customerMap.get(s.customerId)?.gstin && <p>GSTIN: {m.customerMap.get(s.customerId)?.gstin}</p>}</div></section>

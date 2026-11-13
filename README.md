@@ -1,4 +1,4 @@
-# Aurum — Jewellery ERP
+# Samayan Jewellers — Jewellery ERP
 
 A modern jewellery-shop ERP built as a **static React app** that works immediately as a **demo on GitHub Pages**
 (data in the browser's IndexedDB) and is architected to become a **real multi-user ERP** by swapping the data

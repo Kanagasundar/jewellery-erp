@@ -1,17 +1,19 @@
 import clsx from 'clsx'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/app/auth'
+import { useBrand } from '@/hooks/useBrand'
 import { Logo } from './Logo'
 import { NAV } from './nav'
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { can } = useAuth()
+  const brand = useBrand()
   return (
     <aside className="no-print flex h-full w-[236px] shrink-0 flex-col bg-side text-stone-300" aria-label="Primary">
       <div className="flex items-center gap-2.5 px-4 py-4">
         <Logo />
-        <div className="leading-none">
-          <p className="font-display text-[22px] font-semibold tracking-wide text-gold-300">Aurum</p>
+        <div className="min-w-0 leading-none">
+          <p className="font-display text-[20px] leading-[1.05] font-semibold tracking-wide text-gold-300" title={brand.name}>{brand.name}</p>
           <p className="mt-0.5 text-[10px] tracking-[0.18em] text-stone-500 uppercase">Jewellery ERP</p>
         </div>
       </div>

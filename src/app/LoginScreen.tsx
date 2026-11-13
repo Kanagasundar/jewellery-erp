@@ -8,6 +8,7 @@ import { IS_DEMO } from '@/config/env'
 import { ROLE_LABELS } from '@/domain/permissions'
 import { erp } from '@/services'
 import { errMsg } from '@/hooks/useData'
+import { useBrand } from '@/hooks/useBrand'
 import { useAuth } from './auth'
 
 const ROLE_ORDER = Object.keys(ROLE_LABELS)
@@ -24,6 +25,7 @@ const ROLE_BLURB: Record<string, string> = {
 
 export function LoginScreen() {
   const { loginDemo, login } = useAuth()
+  const brand = useBrand()
   const users = useQuery({ queryKey: ['demo-users'], queryFn: () => erp.auth.listDemoUsers(), enabled: IS_DEMO })
   const [error, setError] = useState('')
   const [email, setEmail] = useState('')
@@ -38,12 +40,12 @@ export function LoginScreen() {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1fr_1.1fr]">
       <div className="relative hidden flex-col justify-between bg-side p-10 text-stone-300 lg:flex">
-        <div className="flex items-center gap-3"><Logo size={38} /><span className="font-display text-3xl font-semibold tracking-wide text-gold-300">Aurum</span></div>
+        <div className="flex items-center gap-3"><Logo size={38} /><span className="font-display text-3xl font-semibold tracking-wide text-gold-300">{brand.name}</span></div>
         <div>
           <h1 className="font-display text-[46px] leading-[1.05] font-semibold text-white">Every piece,<br />individually accounted for.</h1>
           <p className="mt-4 max-w-md text-[14px] leading-relaxed text-stone-400">Item-level barcodes, an auditable stock ledger, weight-accurate billing and a workshop you can trace — built for the jewellery counter.</p>
         </div>
-        <p className="text-[11px] tracking-wide text-stone-500">Aurum Jewellery ERP · {IS_DEMO ? 'Demonstration build' : 'Production'}</p>
+        <p className="text-[11px] tracking-wide text-stone-500">{brand.name} · Jewellery ERP · {IS_DEMO ? 'Demonstration build' : 'Production'}</p>
       </div>
       <div className="flex items-center justify-center px-5 py-10">
         <div className="w-full max-w-lg">

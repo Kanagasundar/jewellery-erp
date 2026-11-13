@@ -58,6 +58,8 @@ export interface SalePaymentInput {
   reference?: string
 }
 export interface SaleInput {
+  /** selling branch (id from Settings → Branches); name is snapshotted on the invoice */
+  branchId?: string
   customerId: ID | null
   walkInName?: string
   walkInPhone?: string

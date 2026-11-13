@@ -69,3 +69,21 @@ describe('reports are computed from real data', () => {
     expect(co.rows.some((r) => (r.balance as number) > 0)).toBe(true) // seeded credit sale
   })
 })
+
+describe('branches & shop name', () => {
+  it('default shop name is Samayan Jewellers and a sale snapshots the branch name', async () => {
+    const { sales } = await import('@/repositories/indexeddb/commands/sales')
+    await resetAndSeed()
+    setActor({ id: 'u-super', name: 'x', email: '', role: 'super_admin' })
+    const st = (await db.settings.get('main'))!
+    expect(st.shopName).toBe('Samayan Jewellers')
+    expect(st.branches.length).toBeGreaterThan(0)
+    const item = await db.stockItems.where('status').equals('available').first()
+    const p = (await db.products.get(item!.productId))!
+    const rate = (await db.metalRates.where('[metalId+purityId]').equals([item!.metalId, item!.purityId]).toArray()).sort((a, b) => b.effectiveAt.localeCompare(a.effectiveAt))[0]
+    const { priceItem, invoiceTotals } = await import('@/domain/calculations/pricing')
+    const total = invoiceTotals([priceItem({ pricingMode: p.pricingMode, fixedPrice: p.fixedPrice, netWeight: item!.netWeight, ratePerGram: rate.ratePerGram, makingType: p.makingType, makingValue: p.makingValue, wastageType: p.wastageType, wastageValue: p.wastageValue, stoneCharge: p.stoneCharge, gstPercent: p.gstPercent })]).total
+    const sale = await sales.create({ branchId: st.branches[1].id, customerId: null, items: [{ stockItemId: item!.id }], payments: [{ mode: 'cash', amount: total }] })
+    expect(sale.branchName).toBe(st.branches[1].name)
+  })
+})

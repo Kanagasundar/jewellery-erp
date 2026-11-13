@@ -38,6 +38,45 @@ function Profile() {
   )
 }
 
+function Branches() {
+  const s = useSettings()
+  const confirm = useConfirm()
+  const [name, setName] = useState('')
+  const [edit, setEdit] = useState<{ id: string; name: string } | null>(null)
+  const list = s.data?.branches ?? []
+  const save = useAction((branches: Settings['branches']) => erp.commands.system.saveSettings({ ...s.data!, branches }), { success: 'Branches updated' })
+  if (!s.data) return <Spinner />
+  const dup = (n: string, skip?: string) => list.some((b) => b.id !== skip && b.name.trim().toLowerCase() === n.trim().toLowerCase())
+  return (
+    <Card title="Branches / shops">
+      <p className="mb-3 max-w-2xl text-[12.5px] text-muted">Each sale is stamped with the branch selected in the header and shows it on the invoice and sales list. Renaming a branch does not change invoices already issued (they keep the name at the time).</p>
+      <ul className="mb-4 max-w-xl divide-y divide-line rounded-md border border-line">
+        {list.map((b) => (
+          <li key={b.id} className="flex items-center justify-between gap-2 px-3 py-2">
+            {edit?.id === b.id ? (
+              <>
+                <Bare.input aria-label="Branch name" autoFocus value={edit.name} onChange={(e) => setEdit({ id: b.id, name: e.target.value })} />
+                <span className="flex gap-1"><Button size="sm" variant="primary" disabled={!edit.name.trim() || dup(edit.name, b.id)} loading={save.pending} onClick={async () => { await save.run(list.map((x) => (x.id === b.id ? { ...x, name: edit.name.trim() } : x))); setEdit(null) }}>Save</Button><Button size="sm" onClick={() => setEdit(null)}>Cancel</Button></span>
+              </>
+            ) : (
+              <>
+                <span className="text-[13.5px] font-medium">{b.name}</span>
+                <span className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => setEdit({ id: b.id, name: b.name })}>Rename</Button>
+                  <Button size="sm" variant="ghost" disabled={list.length <= 1} title={list.length <= 1 ? 'At least one branch is required' : undefined} onClick={async () => { if (await confirm({ title: `Remove “${b.name}”?`, message: 'Existing invoices keep the branch name they were issued with.', confirmLabel: 'Remove', danger: true })) save.run(list.filter((x) => x.id !== b.id)) }}><Trash2 size={13} /></Button></span>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="flex max-w-xl gap-2">
+        <Bare.input aria-label="New branch name" placeholder="New branch name, e.g. T. Nagar Showroom" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name.trim() && !dup(name)) { save.run([...list, { id: `br-${Date.now().toString(36)}`, name: name.trim() }]); setName('') } }} />
+        <Button variant="primary" icon={<Plus size={14} />} disabled={!name.trim() || dup(name)} loading={save.pending} onClick={async () => { await save.run([...list, { id: `br-${Date.now().toString(36)}`, name: name.trim() }]); setName('') }}>Add branch</Button>
+      </div>
+      {name.trim() && dup(name) && <p role="alert" className="mt-1 text-[11.5px] text-bad">A branch with this name already exists.</p>}
+    </Card>
+  )
+}
+
 function Rates() {
   const m = useMasters()
   const rates = useList('metalRates')
@@ -129,8 +168,8 @@ export default function SettingsPage() {
   return (
     <div className="fade-in">
       <PageHeader title="Settings" subtitle="Shop profile, metal rates, masters and system tools." />
-      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'profile', label: 'Shop & preferences' }, { key: 'rates', label: 'Metal rates' }, { key: 'masters', label: 'Categories, metals, purities, tax' }, { key: 'system', label: 'Demo data & audit trail' }]} />
-      {tab === 'profile' && <Profile />}{tab === 'rates' && <Rates />}{tab === 'masters' && <Masters />}{tab === 'system' && <DemoData />}
+      <Tabs value={tab} onChange={setTab} tabs={[{ key: 'profile', label: 'Shop & preferences' }, { key: 'branches', label: 'Branches' }, { key: 'rates', label: 'Metal rates' }, { key: 'masters', label: 'Categories, metals, purities, tax' }, { key: 'system', label: 'Demo data & audit trail' }]} />
+      {tab === 'profile' && <Profile />}{tab === 'branches' && <Branches />}{tab === 'rates' && <Rates />}{tab === 'masters' && <Masters />}{tab === 'system' && <DemoData />}
     </div>
   )
 }

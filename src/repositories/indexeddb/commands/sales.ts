@@ -86,6 +86,7 @@ export const sales: ErpCommands['sales'] = {
       const sale: Sale = stampNew({
         id: uid(), invoiceNo: await nextNo('invoice', `${settings?.invoicePrefix ?? 'INV'}-`, 5), date, customerId: customer?.id ?? null,
         customerName: customer?.name ?? (input.walkInName?.trim() || 'Walk-in Customer'), customerPhone: customer?.phone ?? input.walkInPhone ?? '',
+        branchId: input.branchId, branchName: settings?.branches?.find((b) => b.id === input.branchId)?.name,
         status: 'completed' as const, lines, ...totals, returnedValue: 0, notes: input.notes,
       })
       await db.sales.add(sale)
