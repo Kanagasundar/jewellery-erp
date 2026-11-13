@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+/* ---------- Design tokens (see UI_DESIGN_SYSTEM.md) ---------- */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  /* warm neutral scale */
+  --color-canvas: #f6f4ef;
+  --color-surface: #ffffff;
+  --color-line: #e8e3d9;
+  --color-line-strong: #d6cfc0;
+  --color-ink: #1c1917;
+  --color-ink-2: #44403c;
+  --color-muted: #78716c;
+  --color-faint: #a8a29e;
+  --color-side: #15130f;
+  --color-side-2: #1f1c17;
+
+  /* champagne gold accent */
+  --color-gold-50: #faf6ec;
+  --color-gold-100: #f3ead2;
+  --color-gold-200: #e6d3a3;
+  --color-gold-300: #d9bb73;
+  --color-gold-400: #c9a45c;
+  --color-gold-500: #b08a3e;
+  --color-gold-600: #8f6d2f;
+  --color-gold-700: #6f5426;
+
+  --color-ok: #2f7d4f;
+  --color-ok-bg: #e8f3ec;
+  --color-warn: #a66a0a;
+  --color-warn-bg: #fbf0dc;
+  --color-bad: #b3372f;
+  --color-bad-bg: #faeae8;
+  --color-info: #2b6aa3;
+  --color-info-bg: #e6f0f8;
+  --color-violet: #6b4fa0;
+  --color-violet-bg: #efeaf7;
+
+  --radius-card: 10px;
+  --shadow-card: 0 1px 0 rgba(28, 25, 23, 0.03), 0 1px 3px rgba(28, 25, 23, 0.05);
+  --shadow-pop: 0 12px 32px -8px rgba(28, 25, 23, 0.25), 0 2px 6px rgba(28, 25, 23, 0.08);
+}
+
+@layer base {
+  html { font-size: 14px; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { letter-spacing: -0.01em; }
+  :focus-visible { outline: 2px solid var(--color-gold-500); outline-offset: 2px; border-radius: 4px; }
+  button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  ::selection { background: var(--color-gold-200); }
+  input[type='number']::-webkit-inner-spin-button { opacity: 0.4; }
+}
+
+@layer components {
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .card { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+  .label-xs { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-muted); }
+
+  /* dense data table */
+  .grid-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  .grid-table thead th {
+    position: sticky; top: 0; z-index: 1; background: #faf8f3; color: var(--color-muted);
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--color-line); white-space: nowrap;
+  }
+  .grid-table thead th.num { text-align: right; }
+  .grid-table tbody td { padding: 9px 12px; border-bottom: 1px solid #f0ece3; vertical-align: middle; }
+  .grid-table tbody tr:hover { background: #fcfaf5; }
+  .grid-table tbody tr.clickable { cursor: pointer; }
+  .grid-table tfoot td { padding: 9px 12px; font-weight: 600; background: #faf8f3; border-top: 1px solid var(--color-line); }
+}
+
+/* ---------- Print (invoices, labels, reports) ---------- */
+@media print {
+  @page { margin: 10mm; }
+  body { background: #fff !important; }
+  .no-print, aside, header.app-header { display: none !important; }
+  .print-area { display: block !important; box-shadow: none !important; border: none !important; }
+  main { padding: 0 !important; margin: 0 !important; }
+  .app-shell { display: block !important; }
+}
+@media screen { .print-only { display: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: fade-in 0.18s ease-out; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }
