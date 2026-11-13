@@ -191,7 +191,34 @@ CREATE TABLE counters (name VARCHAR(30) PRIMARY KEY, value BIGINT UNSIGNED NOT N
 CREATE TABLE audit_logs (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, at DATETIME NOT NULL, user_id BIGINT UNSIGNED NULL, action VARCHAR(30) NOT NULL,
   entity VARCHAR(40) NOT NULL, entity_id VARCHAR(40) NOT NULL, details VARCHAR(500) NOT NULL, ip VARCHAR(45) NULL, INDEX ix_audit_entity (entity, entity_id));
 ```
-> A branch dimension (`branch_id` on stock_items, sales, payments, …) is a planned production extension; the demo's branch selector is cosmetic.
+### Branches & per-branch stock
+```sql
+CREATE TABLE branches (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, code VARCHAR(20) NOT NULL UNIQUE, name VARCHAR(120) NOT NULL UNIQUE,
+  is_active TINYINT(1) NOT NULL DEFAULT 1, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);
+
+ALTER TABLE stock_items     ADD COLUMN branch_id BIGINT UNSIGNED NOT NULL, ADD INDEX ix_item_branch_status (branch_id, status),
+                            ADD FOREIGN KEY (branch_id) REFERENCES branches(id);   -- branch that holds (or dispatched, while in transit) the piece
+ALTER TABLE stock_ledger    ADD COLUMN branch_id BIGINT UNSIGNED NOT NULL, ADD INDEX ix_ledger_branch_product (branch_id, product_id);
+ALTER TABLE stock_inwards   ADD COLUMN branch_id BIGINT UNSIGNED NOT NULL;         -- receiving branch
+ALTER TABLE sales           ADD COLUMN branch_id BIGINT UNSIGNED NOT NULL, ADD COLUMN branch_name VARCHAR(120) NOT NULL;  -- name snapshot
+ALTER TABLE stock_audits    ADD COLUMN branch_id BIGINT UNSIGNED NOT NULL;
+ALTER TABLE stock_items MODIFY status ENUM('available','reserved','sold','repair','polishing','in_transit','damaged','returned','missing') NOT NULL;
+
+CREATE TABLE stock_transfers (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, transfer_no VARCHAR(20) NOT NULL UNIQUE,
+  from_branch_id BIGINT UNSIGNED NOT NULL, to_branch_id BIGINT UNSIGNED NOT NULL, CHECK (from_branch_id <> to_branch_id),
+  status ENUM('in_transit','received','cancelled') NOT NULL, note VARCHAR(255) NULL,
+  dispatched_at DATETIME NOT NULL, received_at DATETIME NULL, received_by BIGINT UNSIGNED NULL, cancel_reason VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, created_by BIGINT UNSIGNED NULL, updated_by BIGINT UNSIGNED NULL,
+  FOREIGN KEY (from_branch_id) REFERENCES branches(id), FOREIGN KEY (to_branch_id) REFERENCES branches(id));
+CREATE TABLE stock_transfer_items (transfer_id BIGINT UNSIGNED NOT NULL, stock_item_id BIGINT UNSIGNED NOT NULL, PRIMARY KEY (transfer_id, stock_item_id),
+  FOREIGN KEY (transfer_id) REFERENCES stock_transfers(id), FOREIGN KEY (stock_item_id) REFERENCES stock_items(id));
+```
+Rules: a sale may only include items whose `branch_id` equals the selling branch; items `in_transit` are not sellable anywhere;
+dispatch writes a ledger **out** row on the source branch (`available → in_transit`), receipt writes a ledger **in** row on the destination
+branch and sets `stock_items.branch_id`; a branch that holds stock (including in transit) cannot be deleted/deactivated.
+Reconciliation also runs per branch: `COUNT(available items at branch × product) = Σ(qty_in − qty_out)` of ledger rows with that `branch_id`.
+Payments, expenses and purchase orders are **not** branch-scoped yet (add `branch_id` the same way if cash books must be per branch).
 
 ## Business invariants the database/service layer must enforce
 | # | Invariant | Mechanism |

@@ -44,7 +44,7 @@ describe('reports are computed from real data', () => {
       sales: await all(db.sales), returns: await all(db.saleReturns), purchases: await all(db.purchaseOrders), payments: await all(db.payments), items: await all(db.stockItems),
       ledger: await all(db.ledger), products: await all(db.products), categories: await all(db.categories), metals: await all(db.metals), purities: await all(db.purities),
       customers: await all(db.customers), suppliers: await all(db.suppliers), repairs: await all(db.repairs), polishing: await all(db.polishing), audits: await all(db.audits),
-      adjustments: await all(db.adjustments), expenses: await all(db.expenses), users: await all(db.users), auditLogs: await all(db.auditLogs),
+      adjustments: await all(db.adjustments), transfers: await all(db.transfers), branches: (await db.settings.get('main'))!.branches, expenses: await all(db.expenses), users: await all(db.users), auditLogs: await all(db.auditLogs),
     } as unknown as ReportData
   }, 60000)
 
@@ -78,12 +78,12 @@ describe('branches & shop name', () => {
     const st = (await db.settings.get('main'))!
     expect(st.shopName).toBe('Samayan Jewellers')
     expect(st.branches.length).toBeGreaterThan(0)
-    const item = await db.stockItems.where('status').equals('available').first()
+    const item = await db.stockItems.filter((i) => i.status === 'available' && i.branchId === 'br-main').first()
     const p = (await db.products.get(item!.productId))!
     const rate = (await db.metalRates.where('[metalId+purityId]').equals([item!.metalId, item!.purityId]).toArray()).sort((a, b) => b.effectiveAt.localeCompare(a.effectiveAt))[0]
     const { priceItem, invoiceTotals } = await import('@/domain/calculations/pricing')
     const total = invoiceTotals([priceItem({ pricingMode: p.pricingMode, fixedPrice: p.fixedPrice, netWeight: item!.netWeight, ratePerGram: rate.ratePerGram, makingType: p.makingType, makingValue: p.makingValue, wastageType: p.wastageType, wastageValue: p.wastageValue, stoneCharge: p.stoneCharge, gstPercent: p.gstPercent })]).total
-    const sale = await sales.create({ branchId: st.branches[1].id, customerId: null, items: [{ stockItemId: item!.id }], payments: [{ mode: 'cash', amount: total }] })
-    expect(sale.branchName).toBe(st.branches[1].name)
+    const sale = await sales.create({ branchId: st.branches[0].id, customerId: null, items: [{ stockItemId: item!.id }], payments: [{ mode: 'cash', amount: total }] })
+    expect(sale.branchName).toBe(st.branches[0].name)
   })
 })

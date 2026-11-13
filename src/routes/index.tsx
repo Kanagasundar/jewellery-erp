@@ -14,6 +14,7 @@ const InwardDetail = lazy(() => import('@/features/inward/InwardPages').then((m)
 const InwardForm = lazy(() => import('@/features/inward/InwardFormPage'))
 const Barcodes = lazy(() => import('@/features/barcodes/BarcodesPage'))
 const Inventory = lazy(() => import('@/features/inventory/InventoryPage'))
+const Transfers = lazy(() => import('@/features/transfers/TransfersPage'))
 const SalesList = lazy(() => import('@/features/sales/SalesPages').then((m) => ({ default: m.SalesListPage })))
 const Invoice = lazy(() => import('@/features/sales/SalesPages').then((m) => ({ default: m.InvoicePage })))
 const Pos = lazy(() => import('@/features/sales/PosPage'))
@@ -51,6 +52,7 @@ export const appRoutes: AppRoute[] = [
   { path: '/inward/:id/edit', perm: 'inward.manage', element: w(<InwardForm />) },
   { path: '/barcodes', perm: 'barcodes.view', element: w(<Barcodes />) },
   { path: '/inventory', perm: 'inventory.view', element: w(<Inventory />) },
+  { path: '/transfers', perm: 'inventory.view', element: w(<Transfers />) },
   { path: '/sales', perm: 'sales.view', element: w(<SalesList />) },
   { path: '/sales/new', perm: 'sales.create', element: w(<Pos />) },
   { path: '/sales/:id', perm: 'sales.view', element: w(<Invoice />) },

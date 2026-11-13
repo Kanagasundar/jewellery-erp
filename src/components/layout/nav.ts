@@ -1,5 +1,5 @@
 import {
-  Barcode, BookUser, Boxes, ClipboardCheck, CreditCard, FileBarChart, Gem, LayoutDashboard, PackageCheck, Receipt, Settings,
+  ArrowLeftRight, Barcode, BookUser, Boxes, ClipboardCheck, CreditCard, FileBarChart, Gem, LayoutDashboard, PackageCheck, Receipt, Settings,
   ShieldCheck, ShoppingCart, Sparkles, Truck, Users, Wallet, Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -18,6 +18,7 @@ export const NAV: NavGroup[] = [
       { to: '/inward', label: 'Stock Inward', icon: PackageCheck, perm: 'inward.view' },
       { to: '/barcodes', label: 'Barcode Management', icon: Barcode, perm: 'barcodes.view' },
       { to: '/inventory', label: 'Inventory', icon: Boxes, perm: 'inventory.view' },
+      { to: '/transfers', label: 'Stock Transfers', icon: ArrowLeftRight, perm: 'inventory.view' },
       { to: '/stock-audit', label: 'Stock Checking', icon: ClipboardCheck, perm: 'audit.view' },
     ],
   },

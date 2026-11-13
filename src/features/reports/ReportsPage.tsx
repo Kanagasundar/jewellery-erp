@@ -22,13 +22,14 @@ function useReportData() {
   const q = {
     sales: useList('sales'), returns: useList('saleReturns'), purchases: useList('purchaseOrders'), payments: useList('payments'), items: useList('stockItems'), ledger: useList('ledger'),
     products: useList('products'), categories: useList('categories'), metals: useList('metals'), purities: useList('purities'), customers: useList('customers'), suppliers: useList('suppliers'),
-    repairs: useList('repairs'), polishing: useList('polishing'), audits: useList('audits'), adjustments: useList('adjustments'), expenses: useList('expenses'), users: useList('users'), auditLogs: useList('auditLogs'),
+    transfers: useList('transfers'), repairs: useList('repairs'), polishing: useList('polishing'), audits: useList('audits'), adjustments: useList('adjustments'), expenses: useList('expenses'), users: useList('users'), auditLogs: useList('auditLogs'),
   }
   const all = Object.values(q)
   const loading = all.some((x) => x.isLoading)
   const error = all.find((x) => x.error)?.error
-  const data = Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v.data ?? []])) as unknown as ReportData
-  return { data, loading, error }
+  const settings = useSettings()
+  const data = { ...Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v.data ?? []])), branches: settings.data?.branches ?? [] } as unknown as ReportData
+  return { data, loading: loading || settings.isLoading, error }
 }
 
 const fmtCell = (v: string | number | undefined, k?: Kind) => {

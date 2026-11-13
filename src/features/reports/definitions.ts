@@ -2,7 +2,7 @@ import { D, money, sum, weight } from '@/domain/calculations/decimal'
 import { customerBalance, paidAgainst, purchaseOutstanding, supplierBalance } from '@/domain/calculations/ledger'
 import type {
   AuditLog, Category, Customer, Expense, Metal, Payment, PolishingJob, Product, PurchaseOrder, Purity, Repair, Sale, SaleReturn, StockAdjustment,
-  StockAudit, StockItem, StockLedgerEntry, Supplier, User,
+  StockAudit, StockItem, StockLedgerEntry, StockTransfer, Supplier, User,
 } from '@/types/entities'
 import { dayKey, inRange, monthKey } from '@/utils/dates'
 
@@ -14,6 +14,7 @@ export interface ReportResult { columns: RCol[]; rows: Row[]; note?: string }
 export interface ReportData {
   sales: Sale[]; returns: SaleReturn[]; purchases: PurchaseOrder[]; payments: Payment[]; items: StockItem[]; ledger: StockLedgerEntry[]
   products: Product[]; categories: Category[]; metals: Metal[]; purities: Purity[]; customers: Customer[]; suppliers: Supplier[]
+  branches: { id: string; name: string }[]; transfers: StockTransfer[]
   repairs: Repair[]; polishing: PolishingJob[]; audits: StockAudit[]; adjustments: StockAdjustment[]; expenses: Expense[]; users: User[]; auditLogs: AuditLog[]
 }
 export interface ReportDef {
@@ -63,9 +64,9 @@ export const REPORTS: ReportDef[] = [
     build: (d, from, to) => {
       const rows = d.sales.filter((s) => inRange(s.date, from, to)).map((s) => {
         const paid = paidAgainst(d.payments, 'sale', s.id)
-        return { date: dayKey(s.date), invoice: s.invoiceNo, customer: s.customerName, items: s.lines.length, taxable: s.taxable, gst: s.gst, total: s.total, paid, due: s.status === 'cancelled' ? 0 : money(D(s.total).minus(s.returnedValue).minus(paid)), status: s.status }
+        return { date: dayKey(s.date), invoice: s.invoiceNo, branch: s.branchName ?? '', customer: s.customerName, items: s.lines.length, taxable: s.taxable, gst: s.gst, total: s.total, paid, due: s.status === 'cancelled' ? 0 : money(D(s.total).minus(s.returnedValue).minus(paid)), status: s.status }
       }).sort((a, b) => b.invoice.localeCompare(a.invoice))
-      return { columns: [{ key: 'date', header: 'Date', kind: 'date' }, { key: 'invoice', header: 'Invoice' }, { key: 'customer', header: 'Customer' }, { key: 'items', header: 'Items', kind: 'int', total: true }, { key: 'taxable', header: 'Taxable (₹)', kind: 'money', total: true }, { key: 'gst', header: 'GST (₹)', kind: 'money', total: true }, { key: 'total', header: 'Total (₹)', kind: 'money', total: true }, { key: 'paid', header: 'Paid (₹)', kind: 'money', total: true }, { key: 'due', header: 'Due (₹)', kind: 'money', total: true }, { key: 'status', header: 'Status' }], rows }
+      return { columns: [{ key: 'date', header: 'Date', kind: 'date' }, { key: 'invoice', header: 'Invoice' }, { key: 'branch', header: 'Branch' }, { key: 'customer', header: 'Customer' }, { key: 'items', header: 'Items', kind: 'int', total: true }, { key: 'taxable', header: 'Taxable (₹)', kind: 'money', total: true }, { key: 'gst', header: 'GST (₹)', kind: 'money', total: true }, { key: 'total', header: 'Total (₹)', kind: 'money', total: true }, { key: 'paid', header: 'Paid (₹)', kind: 'money', total: true }, { key: 'due', header: 'Due (₹)', kind: 'money', total: true }, { key: 'status', header: 'Status' }], rows }
     },
   },
   {
@@ -85,6 +86,29 @@ export const REPORTS: ReportDef[] = [
       }).filter((r) => r.available || r.reserved).sort((a, b) => b.cost - a.cost)
       return { columns: [{ key: 'sku', header: 'SKU' }, { key: 'product', header: 'Product' }, { key: 'category', header: 'Category' }, { key: 'available', header: 'Available', kind: 'int', total: true }, { key: 'reserved', header: 'Reserved', kind: 'int', total: true }, { key: 'gross', header: 'Gross (g)', kind: 'weight', total: true }, { key: 'net', header: 'Net (g)', kind: 'weight', total: true }, { key: 'cost', header: 'Cost value (₹)', kind: 'money', total: true }], rows }
     },
+  },
+  {
+    key: 'branch-stock', group: 'Stock', title: 'Branch-wise stock', description: 'Available stock, weight and cost value per branch and category (as of now), plus pieces in transit.', ranged: false,
+    build: (d) => {
+      const pm = byId(d.products), cm = byId(d.categories)
+      const g = new Map<string, Row>()
+      const name = (id: string) => d.branches.find((b) => b.id === id)?.name ?? id
+      for (const i of d.items.filter((x) => x.status === 'available' || x.status === 'in_transit')) {
+        const cat = cm.get(pm.get(i.productId)?.categoryId ?? '')?.name ?? 'Other'
+        const k = `${i.branchId}|${cat}`
+        const r = g.get(k) ?? { branch: name(i.branchId), category: cat, available: 0, transit: 0, net: 0, cost: 0 }
+        if (i.status === 'available') { r.available = +r.available + 1; r.net = weight(D(r.net).plus(i.netWeight)); r.cost = money(D(r.cost).plus(i.costPrice)) } else r.transit = +r.transit + 1
+        g.set(k, r)
+      }
+      return { columns: [{ key: 'branch', header: 'Branch' }, { key: 'category', header: 'Category' }, { key: 'available', header: 'Available pcs', kind: 'int', total: true }, { key: 'transit', header: 'In transit pcs', kind: 'int', total: true }, { key: 'net', header: 'Net (g)', kind: 'weight', total: true }, { key: 'cost', header: 'Cost value (₹)', kind: 'money', total: true }], rows: [...g.values()].sort((a, b) => String(a.branch).localeCompare(String(b.branch)) || String(a.category).localeCompare(String(b.category))) }
+    },
+  },
+  {
+    key: 'transfers', group: 'Stock', title: 'Stock transfer report', description: 'Inter-branch transfers with status.', ranged: true,
+    build: (d, from, to) => ({
+      columns: [{ key: 'date', header: 'Dispatched', kind: 'date' }, { key: 'no', header: 'Transfer' }, { key: 'from', header: 'From' }, { key: 'to', header: 'To' }, { key: 'items', header: 'Items', kind: 'int', total: true }, { key: 'status', header: 'Status' }, { key: 'received', header: 'Received', kind: 'date' }],
+      rows: d.transfers.filter((t) => inRange(t.dispatchedAt, from, to)).sort((a, b) => b.transferNo.localeCompare(a.transferNo)).map((t) => ({ date: dayKey(t.dispatchedAt), no: t.transferNo, from: t.fromBranchName, to: t.toBranchName, items: t.itemIds.length, status: t.status, received: t.receivedAt ? dayKey(t.receivedAt) : '' })),
+    }),
   },
   {
     key: 'metal-purity', group: 'Stock', title: 'Metal-wise & purity-wise inventory', description: 'Available stock grouped by metal and purity.', ranged: false,

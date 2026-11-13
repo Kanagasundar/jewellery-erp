@@ -24,7 +24,9 @@ let payId = 1
 export default function PosPage() {
   const nav = useNavigate()
   const toast = useToast()
-  const { active: branch } = useBranch()
+  const { branches, operating, nameOf } = useBranch()
+  const [branchSel, setBranchSel] = useState('')
+  const branch = branches.find((b) => b.id === branchSel) ?? operating
   const m = useMasters()
   const items = useList('stockItems'), rates = useList('metalRates'), pays = useList('payments')
   const itemMap = useIndex(items.data)
@@ -64,6 +66,7 @@ export default function PosPage() {
   const addItem = (item: StockItem): boolean => {
     const block = sellBlockReason(item)
     if (block) { setScanErr(`Cannot add: ${block}.`); return false }
+    if (branch && item.branchId !== branch.id) { setScanErr(`${item.itemCode} is held at ${nameOf(item.branchId)}, not ${branch.name}. Transfer it to ${branch.name} first.`); return false }
     if (cart.some((c) => c.id === item.id)) { setScanErr(`${item.itemCode} is already on this bill.`); return false }
     setScanErr(''); setCart((c) => [...c, { id: item.id, discount: '' }]); return true
   }
@@ -75,8 +78,8 @@ export default function PosPage() {
   const matches = useMemo(() => {
     const n = q.trim().toLowerCase()
     if (n.length < 2) return []
-    return (items.data ?? []).filter((i) => i.status === 'available' && !cart.some((c) => c.id === i.id) && (i.itemCode.toLowerCase().includes(n) || i.barcode.toLowerCase().includes(n) || (m.productMap.get(i.productId)?.name ?? '').toLowerCase().includes(n))).slice(0, 8)
-  }, [q, items.data, cart, m.productMap])
+    return (items.data ?? []).filter((i) => i.status === 'available' && i.branchId === branch?.id && !cart.some((c) => c.id === i.id) && (i.itemCode.toLowerCase().includes(n) || i.barcode.toLowerCase().includes(n) || (m.productMap.get(i.productId)?.name ?? '').toLowerCase().includes(n))).slice(0, 8)
+  }, [q, items.data, cart, m.productMap, branch?.id])
 
   const quickPay = (mode: PaymentMode) => setPayments((p) => [...p, { id: payId++, mode, amount: String(Math.max(balance, 0)), reference: '' }])
   const save = useAction(() => erp.commands.sales.create({
@@ -94,6 +97,9 @@ export default function PosPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_390px]">
         <div className="min-w-0 space-y-3">
           <Card>
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]"><span className="font-medium">Selling branch</span>
+              <Bare.select aria-label="Selling branch" className="!w-auto min-w-[200px]" value={branch?.id ?? ''} onChange={(e) => { setBranchSel(e.target.value); setCart([]); setScanErr('') }}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Bare.select>
+              <span className="text-[12px] text-muted">Only items held at this branch can be billed.</span></div>
             <ScanInput onScan={onScan} />
             {scanErr && <div className="mt-2"><Notice tone="red">{scanErr}</Notice></div>}
             <div className="relative mt-3">

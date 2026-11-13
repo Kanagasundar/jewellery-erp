@@ -24,6 +24,14 @@ Implemented in `src/domain/*` (pure rules) and `src/repositories/indexeddb/comma
 | 16 | No duplicate active barcode | unique `barcode` index + `regenerate` voids the old one ✔ test |
 | 17 | No negative stock | piece-level model: an item is either available or not; nothing to go negative |
 
+## Branches & per-branch stock
+* **Where is a piece?** Every stock item has a `branchId`. Inward receives into a chosen branch; the ledger records the branch on every movement.
+* **Selling:** the POS has a *Selling branch*; only items held there can be billed (scanning one that is at another branch says where it is and to transfer it first). Invoices show the branch.
+* **Transfers (Stock Transfers menu):** dispatch → *In transit* (not sellable anywhere, leaves the source's availability) → destination **Receive** → *Available* at the destination. Cancel is possible only while in transit. A transfer is auditable on both branches' ledgers.
+* **Audits** are per branch (expected items = available/reserved items held there). Repairs/polishing keep the piece at its branch.
+* **Views:** the header selector scopes the dashboard, low-stock alerts, inventory and transfers to one branch or *All branches*; billing/inward/audits use the selected branch (or the first one when *All* is selected, changeable on the form).
+* A branch that still holds stock cannot be removed (transfer it out first). Payments, expenses and purchases are not branch-scoped yet.
+
 ## Pricing (configurable per product)
 `weight_based`: `metal = net × rate/g`; `wastage = (net × %) or grams × rate`; `making = % of (metal+wastage) | ₹/g × net | fixed ₹`;
 `taxable = metal + wastage + making + stone charge − discount`; `GST = taxable × gst%`; CGST/SGST split; invoice total rounded to ₹1 with the

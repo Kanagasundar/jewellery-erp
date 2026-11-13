@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/Feedback'
 import { Card, KV } from '@/components/ui/Layout'
 import { useConfirm } from '@/components/ui/Modal'
 import { sellBlockReason } from '@/domain/workflows/rules'
+import { useBranch } from '@/hooks/useBranch'
 import { useAction, useList, useMasters } from '@/hooks/useData'
 import { erp } from '@/services'
 import type { StockItem } from '@/types/entities'
@@ -18,6 +19,7 @@ export function ItemDetail({ item, onPrint }: { item: StockItem; onPrint?: () =>
   const { can } = useAuth()
   const confirm = useConfirm()
   const m = useMasters()
+  const { nameOf } = useBranch()
   const ledger = useList('ledger')
   const p = m.productMap.get(item.productId)
   const history = useMemo(() => (ledger.data ?? []).filter((e) => e.stockItemId === item.id).sort((a, b) => b.txnNo.localeCompare(a.txnNo)), [ledger.data, item.id])
@@ -33,7 +35,7 @@ export function ItemDetail({ item, onPrint }: { item: StockItem; onPrint?: () =>
         <div className="flex flex-col items-center rounded-lg border border-line bg-white p-4"><BarcodeImage value={item.barcode} height={56} width={2} showText /><p className="mt-2 text-[11px] text-muted">CODE128 · identifies this one piece</p></div>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           <KV label="Product">{p && <Link className="text-gold-700 hover:underline" to={`/products/${p.id}`}>{p.name}</Link>}</KV>
-          <KV label="SKU">{p?.code}</KV><KV label="Metal / purity">{m.metalMap.get(item.metalId)?.name} {m.purityMap.get(item.purityId)?.label}</KV><KV label="HUID">{item.huid}</KV>
+          <KV label="SKU">{p?.code}</KV><KV label="Metal / purity">{m.metalMap.get(item.metalId)?.name} {m.purityMap.get(item.purityId)?.label}</KV><KV label="HUID">{item.huid}</KV><KV label="Branch">{nameOf(item.branchId)}</KV>
           <KV label="Gross">{fmtW(item.grossWeight)} g</KV><KV label="Stone">{fmtW(item.stoneWeight)} g</KV><KV label="Net metal">{fmtW(item.netWeight)} g</KV><KV label="Cost price">{fmtMoney(item.costPrice)}</KV>
         </dl>
       </div>

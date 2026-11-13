@@ -2,7 +2,7 @@
 
 ## Automated (Vitest + fake-indexeddb) — `npm test`
 Tests run the **real command layer against a real (in-memory) IndexedDB implementation**, so they exercise transactions, unique indexes,
-permissions and the seed. 33 tests, ~5 s.
+permissions and the seed. 39 tests, ~5 s.
 
 > Windows: run from PowerShell/cmd using a `D:\…` path. Launching Vitest from Git-Bash with a lowercase `/d/…` path breaks it
 > (drive-letter-case module duplication → "Cannot read properties of undefined (reading 'config')").
@@ -18,6 +18,7 @@ permissions and the seed. 33 tests, ~5 s.
 | Polishing lifecycle: QC fail/pass, weight loss, return with new weight, not sellable while polishing | `› Workflow 4` |
 | Audit: missing/extra/weight/unknown/duplicate; no change before approval; maker-checker; adjustments + ledger | `› Workflow 5` |
 | Product & supplier CRUD, duplicate SKU, delete protection, audit log, persistence (close/re-open DB), demo reset | `› master data + persistence` |
+| Per-branch stock: every item has a branch, per-branch reconcile, cross-branch billing refused, in-transit unsellable, dispatch→receive→cancel through the ledger, transfer permissions, per-branch audit, branch-with-stock cannot be removed | `workflows.test.ts › per-branch stock & transfers` |
 | Permission matrix, amount-in-words, every report builds with finite numbers, report totals = source data | `misc.test.ts` |
 
 After most workflows the tests call `inventory.reconcile()` and require `ok: true`.

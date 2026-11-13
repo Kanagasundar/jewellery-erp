@@ -89,5 +89,6 @@ export const repos = {
   polishing: readRepo(db.polishing),
   audits: readRepo(db.audits),
   adjustments: readRepo(db.adjustments),
+  transfers: readRepo(db.transfers),
   auditLogs: readRepo(db.auditLogs),
 }

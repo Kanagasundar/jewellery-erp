@@ -4,6 +4,7 @@ import { clock, daysAgo } from '@/utils/clock'
 import { audits } from './commands/audits'
 import { payments, sales } from './commands/sales'
 import { inward, purchases } from './commands/stock'
+import { transfers } from './commands/transfers'
 import { polishing, repairs } from './commands/workshop'
 import { getActor, latestRate, nextNo, setActor, uid } from './ctx'
 import { db } from './db'
@@ -110,8 +111,18 @@ export async function resetAndSeed() {
 
 export async function ensureSeeded() {
   if (!(await isSeeded())) await resetAndSeed()
-  // one-time rename of the previous untouched default name
   const s = await db.settings.get('main')
+  // one-time migration: data created before per-branch stock belongs to the first branch
+  const first = s?.branches?.[0]?.id ?? 'br-main'
+  await db.transaction('rw', db.stockItems, db.ledger, db.inwards, db.audits, db.sales, async () => {
+    await db.stockItems.filter((i) => !i.branchId).modify({ branchId: first })
+    await db.ledger.filter((e) => !e.branchId).modify({ branchId: first })
+    await db.inwards.filter((i) => !i.branchId).modify({ branchId: first })
+    await db.audits.filter((a) => !a.branchId).modify({ branchId: first })
+    const firstName = s?.branches?.[0]?.name ?? 'Main Showroom'
+    await db.sales.filter((x) => !x.branchId).modify({ branchId: first, branchName: firstName })
+  })
+  // one-time rename of the previous untouched default name
   if (s && s.shopName === 'Aurum Jewellers') await db.settings.put({ ...s, shopName: 'Samayan Jewellers' })
 }
 
@@ -189,7 +200,7 @@ async function seedTransactions() {
           items.push({ id: uid(), poLineId: l.id, productId: l.productId, expectedGross: l.grossWeight, expectedPurityId: l.purityId, receivedGross: gross, receivedStone: l.stoneWeight, receivedNet: netWeightOf(gross, l.stoneWeight), verifiedPurityId: l.purityId, stoneOk: true, condition: 'ok', accepted: true, remarks: '' })
         }
       }
-      const inw = await inward.save({ purchaseOrderId: po.id, date: clock.iso(), items, notes: opts.receive === 'partial' ? 'First consignment – balance to follow' : '' })
+      const inw = await inward.save({ branchId: 'br-main', purchaseOrderId: po.id, date: clock.iso(), items, notes: opts.receive === 'partial' ? 'First consignment – balance to follow' : '' })
       await inward.submit(inw.id)
       await inward.approve(inw.id)
     }
@@ -210,7 +221,7 @@ async function seedTransactions() {
   // ---- sales over the last 30 days ----
   const itemsByProduct = async (code: string, n = 1) =>
     (await db.stockItems.where('productId').equals(byCode(code).id).and((i: StockItem) => i.status === 'available').toArray()).slice(0, n)
-  async function sell(daysBack: number, hour: number, customer: string | null, picks: [string, number][], pay: { mode: 'cash' | 'upi' | 'card' | 'bank'; pct: number }[], extra: { discount?: number; advance?: number; walkIn?: string } = {}) {
+  async function sell(daysBack: number, hour: number, customer: string | null, picks: [string, number][], pay: { mode: 'cash' | 'upi' | 'card' | 'bank'; pct: number }[], extra: { discount?: number; advance?: number; walkIn?: string } = {}, branchId = 'br-main') {
     clock.set(daysAgo(daysBack, hour))
     const items: { stockItemId: string; discount?: number }[] = []
     for (const [code, n] of picks) for (const it of await itemsByProduct(code, n)) items.push({ stockItemId: it.id, discount: extra.discount })
@@ -225,7 +236,7 @@ async function seedTransactions() {
       allocated += amt
       return { mode: p.mode, amount: amt, reference: p.mode === 'upi' ? 'UPI' + (900000 + daysBack * 111) : undefined }
     }).filter((p) => p.amount > 0)
-    return sales.create({ customerId: customer, walkInName: customer ? undefined : extra.walkIn ?? 'Walk-in Customer', items, payments: payments_, advanceAdjust: advance, date: clock.iso() })
+    return sales.create({ branchId, customerId: customer, walkInName: customer ? undefined : extra.walkIn ?? 'Walk-in Customer', items, payments: payments_, advanceAdjust: advance, date: clock.iso() })
   }
   async function priceProbe(items: { stockItemId: string; discount?: number }[]) {
     const lines = []
@@ -288,11 +299,23 @@ async function seedTransactions() {
 
   // ---- a small completed audit (one weight variance) ----
   clock.set(daysAgo(7, 9))
-  const a = await audits.create({ title: 'Weekly check – Chains', categoryId: 'c-chain' })
+  const a = await audits.create({ title: 'Weekly check – Chains', branchId: 'br-main', categoryId: 'c-chain' })
   const aItems = (await db.stockItems.filter((i) => a.expectedItemIds.includes(i.id)).toArray())
   for (let i = 0; i < aItems.length; i++) await audits.scan(a.id, aItems[i].barcode, i === 0 ? Math.round((aItems[i].grossWeight - 0.08) * 1000) / 1000 : undefined)
   await audits.submit(a.id)
   clock.set(daysAgo(7, 11)); await audits.approve(a.id, 'Weight variance verified on calibrated scale')
+
+  // ---- a second branch: one received transfer, one still in transit, and a sale made at Branch 2 ----
+  clock.set(daysAgo(1, 16))
+  const move1 = [...(await itemsByProduct('EAR-001', 2)), ...(await itemsByProduct('PND-001', 1)), ...(await itemsByProduct('SLV-003', 3))]
+  const t1 = await transfers.create({ fromBranchId: 'br-main', toBranchId: 'br-2', itemIds: move1.map((i) => i.id), note: 'Initial stock for Branch 2' })
+  clock.set(daysAgo(1, 18))
+  await transfers.receive(t1.id)
+  clock.set(daysAgo(0, 13))
+  await sell(0, 13, null, [['SLV-003', 1]], [{ mode: 'cash', pct: 1 }], {}, 'br-2')
+  clock.set(daysAgo(0, 15))
+  const move2 = [...(await itemsByProduct('CHN-002', 2))]
+  if (move2.length) await transfers.create({ fromBranchId: 'br-main', toBranchId: 'br-2', itemIds: move2.map((i) => i.id), note: 'Chains - on the way' })
 
   // ---- expenses ----
   clock.set(daysAgo(30, 10))

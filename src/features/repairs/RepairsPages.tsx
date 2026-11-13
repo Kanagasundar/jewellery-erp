@@ -134,7 +134,7 @@ export function RepairDetailPage() {
       <PageHeader back="/repairs" title={r.jobNo} subtitle={`${cust?.name ?? ''} · ${r.description}`}
         actions={<>
           <StatusBadge status={r.status} />
-          {next === 'received' && can('repairs.manage') && <><Bare.select aria-label="Artisan" value={artisan} onChange={(e) => setArtisan(e.target.value)}><option value="">Select artisan…</option>{artisans.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Bare.select><Button icon={<UserCheck size={14} />} disabled={!artisan} loading={a.assign.pending} onClick={() => a.assign.run(artisan)}>Assign</Button></>}
+          {next === 'received' && can('repairs.manage') && <><Bare.select aria-label="Artisan" className="!w-auto" value={artisan} onChange={(e) => setArtisan(e.target.value)}><option value="">Select artisan…</option>{artisans.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</Bare.select><Button icon={<UserCheck size={14} />} disabled={!artisan} loading={a.assign.pending} onClick={() => a.assign.run(artisan)}>Assign</Button></>}
           {next === 'assigned' && can('repairs.update') && isMine && <Button variant="primary" icon={<Play size={14} />} loading={a.start.pending} onClick={() => a.start.run()}>Start work</Button>}
           {next === 'in_progress' && can('repairs.update') && isMine && <Button variant="primary" icon={<Check size={14} />} onClick={() => setDone({ labour: String(r.labourEstimate), note: '' })}>Complete work</Button>}
           {next === 'completed' && due > 0 && can('payments.manage') && <Button variant="gold" onClick={() => setPay(true)}>Collect {fmtMoney(due)}</Button>}

@@ -7,6 +7,7 @@ import { Bare, Input, Select } from '@/components/ui/Form'
 import { Card, PageHeader } from '@/components/ui/Layout'
 import { netWeightOf } from '@/domain/calculations/pricing'
 import { inwardDiscrepancy } from '@/domain/workflows/rules'
+import { useBranch } from '@/hooks/useBranch'
 import { useAction, useList, useMasters } from '@/hooks/useData'
 import { erp } from '@/services'
 import type { InwardItem } from '@/types/entities'
@@ -25,11 +26,14 @@ export default function InwardFormPage() {
   const [poId, setPoId] = useState(sp.get('po') ?? '')
   const [date, setDate] = useState(todayInput())
   const [notes, setNotes] = useState('')
+  const { branches, operating } = useBranch()
+  const [branchId, setBranchId] = useState('')
+  useEffect(() => { if (!branchId && operating) setBranchId(operating.id) }, [operating, branchId])
   const [items, setItems] = useState<InwardItem[]>([])
   const [recvQty, setRecvQty] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    if (existing) { setPoId(existing.purchaseOrderId); setDate(existing.date.slice(0, 10)); setNotes(existing.notes ?? ''); setItems(existing.items) }
+    if (existing) { setPoId(existing.purchaseOrderId); setDate(existing.date.slice(0, 10)); setNotes(existing.notes ?? ''); setItems(existing.items); setBranchId(existing.branchId) }
   }, [existing])
 
   const po = pos.data?.find((p) => p.id === poId)
@@ -54,7 +58,7 @@ export default function InwardFormPage() {
   const upd = (i: number, patch: Partial<InwardItem>) => setItems((s) => s.map((x, k) => (k === i ? { ...x, ...patch, receivedNet: netWeightOf(patch.receivedGross ?? x.receivedGross, patch.receivedStone ?? x.receivedStone) } : x)))
 
   const save = useAction(async (submit: boolean) => {
-    const inw = await erp.commands.inward.save({ id, purchaseOrderId: poId, date: new Date(date + 'T12:00:00').toISOString(), notes, items })
+    const inw = await erp.commands.inward.save({ id, branchId, purchaseOrderId: poId, date: new Date(date + 'T12:00:00').toISOString(), notes, items })
     return submit ? erp.commands.inward.submit(inw.id) : inw
   }, { success: (i) => `${i.inwardNo} ${i.status === 'pending_approval' ? 'submitted for approval' : 'saved as draft — stock is not updated yet'}`, onSuccess: (i) => nav(`/inward/${i.id}`) })
 
@@ -74,6 +78,7 @@ export default function InwardFormPage() {
             <Input label="Supplier" value={po ? (m.supplierMap.get(po.supplierId)?.name ?? '') : ''} readOnly />
             <Input label="Received on" type="date" max={todayInput()} value={date} onChange={(e) => setDate(e.target.value)} />
             <Input label="Delivery notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <Select label="Receiving branch" required value={branchId} onChange={(e) => setBranchId(e.target.value)} hint="Stock is created in this branch">{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select>
           </div>
           {po && !existing && (
             <div className="mt-4 overflow-x-auto rounded-md border border-line">

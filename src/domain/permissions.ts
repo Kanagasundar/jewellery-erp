@@ -8,7 +8,7 @@ import type { RoleKey } from '@/types/entities'
 export const PERMISSIONS = [
   'dashboard.view', 'products.view', 'products.manage', 'purchases.view', 'purchases.manage',
   'inward.view', 'inward.manage', 'inward.approve', 'barcodes.view', 'barcodes.manage',
-  'inventory.view', 'inventory.manage', 'sales.view', 'sales.create', 'sales.cancel', 'sales.return',
+  'inventory.view', 'inventory.manage', 'transfers.manage', 'sales.view', 'sales.create', 'sales.cancel', 'sales.return',
   'repairs.view', 'repairs.manage', 'repairs.update', 'polishing.view', 'polishing.manage', 'polishing.update',
   'audit.view', 'audit.manage', 'audit.approve', 'customers.view', 'customers.manage',
   'suppliers.view', 'suppliers.manage', 'payments.view', 'payments.manage', 'expenses.view', 'expenses.manage',
@@ -30,7 +30,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, Permission[]> = {
     'repairs.view', 'repairs.manage', 'customers.view', 'customers.manage', 'payments.view', 'payments.manage',
   ],
   stock_manager: [
-    ...views, 'products.manage', 'inward.manage', 'inward.approve', 'barcodes.manage', 'inventory.manage',
+    ...views, 'products.manage', 'inward.manage', 'inward.approve', 'barcodes.manage', 'inventory.manage', 'transfers.manage',
     'audit.manage', 'polishing.manage', 'repairs.manage', 'reports.view',
   ],
   purchase_manager: [

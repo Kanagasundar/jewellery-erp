@@ -9,7 +9,7 @@ provider for a CodeIgniter 4 + MySQL REST API.
 
 ## Modules
 Dashboard · Products · Purchases · Stock Inward · Barcode Management · Inventory (+ stock ledger) · Sales / POS & Invoices ·
-Repairs · Polishing · Stock Checking (audits) · Customers · Suppliers · Payments & Receipts · Expenses · Reports (Excel/PDF/print) ·
+Stock Transfers (multi-branch stock) · Repairs · Polishing · Stock Checking (audits) · Customers · Suppliers · Payments & Receipts · Expenses · Reports (Excel/PDF/print) ·
 Users & Permissions · Settings (rates, masters, tax) — all interconnected through one stock ledger and one payment/allocation model.
 
 ## Quick start

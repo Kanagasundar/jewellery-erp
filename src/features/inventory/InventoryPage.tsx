@@ -10,6 +10,7 @@ import { Bare, Select } from '@/components/ui/Form'
 import { Card, PageHeader, Stat, Tabs } from '@/components/ui/Layout'
 import { Modal, useConfirm } from '@/components/ui/Modal'
 import { D, money, sum, weight } from '@/domain/calculations/decimal'
+import { useBranch } from '@/hooks/useBranch'
 import { useAction, useIndex, useList, useMasters } from '@/hooks/useData'
 import { ItemDetail } from '@/features/barcodes/ItemDetail'
 import { erp } from '@/services'
@@ -17,7 +18,7 @@ import type { ItemStatus, StockItem, StockLedgerEntry } from '@/types/entities'
 import { fmtDateTime, fmtInt, fmtMoney, fmtNum, fmtW } from '@/utils/format'
 import { useQuery } from '@tanstack/react-query'
 
-const STATUSES: ItemStatus[] = ['available', 'reserved', 'sold', 'repair', 'polishing', 'damaged', 'returned', 'missing']
+const STATUSES: ItemStatus[] = ['available', 'reserved', 'sold', 'repair', 'polishing', 'in_transit', 'damaged', 'returned', 'missing']
 type Tab = 'items' | 'summary' | 'ledger'
 
 export default function InventoryPage() {
@@ -25,6 +26,9 @@ export default function InventoryPage() {
   const confirm = useConfirm()
   const [sp] = useSearchParams()
   const m = useMasters()
+  const { branches, scopeId, nameOf } = useBranch()
+  const [branchSel, setBranchSel] = useState<string | null>(null)
+  const branchF = branchSel ?? scopeId ?? ''
   const items = useList('stockItems'), ledger = useList('ledger'), customers = useList('customers')
   const [tab, setTab] = useState<Tab>((sp.get('tab') as Tab) || 'items')
   const [status, setStatus] = useState(sp.get('status') ?? '')
@@ -34,8 +38,8 @@ export default function InventoryPage() {
   const [reserveFor, setReserveFor] = useState('')
   const itemMap = useIndex(items.data)
 
-  const counts = useMemo(() => { const c: Record<string, number> = {}; for (const i of items.data ?? []) c[i.status] = (c[i.status] ?? 0) + 1; return c }, [items.data])
-  const rows = useMemo(() => (items.data ?? []).filter((i) => (!status || i.status === status) && (!metal || i.metalId === metal) && (!purity || i.purityId === purity) && (!cat || m.productMap.get(i.productId)?.categoryId === cat)), [items.data, status, metal, purity, cat, m.productMap])
+  const counts = useMemo(() => { const c: Record<string, number> = {}; for (const i of (items.data ?? []).filter((x) => !branchF || x.branchId === branchF)) c[i.status] = (c[i.status] ?? 0) + 1; return c }, [items.data, branchF])
+  const rows = useMemo(() => (items.data ?? []).filter((i) => (!branchF || i.branchId === branchF) && (!status || i.status === status) && (!metal || i.metalId === metal) && (!purity || i.purityId === purity) && (!cat || m.productMap.get(i.productId)?.categoryId === cat)), [items.data, status, metal, purity, cat, m.productMap, branchF])
 
   const act = {
     release: useAction((id: string) => erp.commands.inventory.release(id), { success: 'Reservation released' }),
@@ -49,6 +53,7 @@ export default function InventoryPage() {
     { key: 'code', header: 'Item code', value: (i) => i.itemCode, render: (i) => <span className="font-mono text-[12px]">{i.itemCode}</span> },
     { key: 'bc', header: 'Barcode', value: (i) => i.barcode, render: (i) => <span className="font-mono text-[12px] text-muted">{i.barcode}</span> },
     { key: 'name', header: 'Product', value: (i) => m.productMap.get(i.productId)?.name, render: (i) => <span className="font-medium">{m.productMap.get(i.productId)?.name}</span> },
+    { key: 'br', header: 'Branch', value: (i) => nameOf(i.branchId), render: (i) => <span className="text-muted">{nameOf(i.branchId)}</span> },
     { key: 'cat', header: 'Category', value: (i) => m.categoryMap.get(m.productMap.get(i.productId)?.categoryId ?? '')?.name },
     { key: 'metal', header: 'Metal', value: (i) => `${m.metalMap.get(i.metalId)?.name} ${m.purityMap.get(i.purityId)?.label}`, render: (i) => <>{m.metalMap.get(i.metalId)?.name} <span className="text-muted">{m.purityMap.get(i.purityId)?.label}</span></> },
     { key: 'gross', header: 'Gross (g)', num: true, value: (i) => i.grossWeight, render: (i) => fmtW(i.grossWeight) },
@@ -66,24 +71,26 @@ export default function InventoryPage() {
 
   /* category / metal / purity / weight summary of AVAILABLE stock */
   const summary = useMemo(() => {
-    const avail = (items.data ?? []).filter((i) => i.status === 'available')
+    const avail = (items.data ?? []).filter((i) => i.status === 'available' && (!branchF || i.branchId === branchF))
     const group = (key: (i: StockItem) => string) => {
       const g = new Map<string, { qty: number; net: number; gross: number; cost: number }>()
       for (const i of avail) { const k = key(i); const c = g.get(k) ?? { qty: 0, net: 0, gross: 0, cost: 0 }; c.qty++; c.net = weight(D(c.net).plus(i.netWeight)); c.gross = weight(D(c.gross).plus(i.grossWeight)); c.cost = money(D(c.cost).plus(i.costPrice)); g.set(k, c) }
       return [...g].map(([k, v]) => ({ k, ...v })).sort((a, b) => b.cost - a.cost)
     }
     return {
+      branch: group((i) => nameOf(i.branchId)),
       cat: group((i) => m.categoryMap.get(m.productMap.get(i.productId)?.categoryId ?? '')?.name ?? 'Other'),
       metal: group((i) => m.metalMap.get(i.metalId)?.name ?? '—'),
       purity: group((i) => `${m.metalMap.get(i.metalId)?.name} ${m.purityMap.get(i.purityId)?.label}`),
       total: { qty: avail.length, net: weight(sum(avail.map((i) => i.netWeight))), cost: money(sum(avail.map((i) => i.costPrice))) },
     }
-  }, [items.data, m.categoryMap, m.productMap, m.metalMap, m.purityMap])
+  }, [items.data, m.categoryMap, m.productMap, m.metalMap, m.purityMap, branchF, branches])
 
   const ledgerCols: Column<StockLedgerEntry>[] = [
     { key: 'txn', header: 'Txn', value: (e) => e.txnNo, render: (e) => <span className="font-mono text-[12px]">{e.txnNo}</span> },
     { key: 'date', header: 'Date', value: (e) => e.date, render: (e) => fmtDateTime(e.date) },
     { key: 'ref', header: 'Reference', value: (e) => e.refNo, render: (e) => <span className="font-mono text-[12px]">{e.refNo}</span> },
+    { key: 'br', header: 'Branch', value: (e) => nameOf(e.branchId) },
     { key: 'item', header: 'Item', value: (e) => itemMap.get(e.stockItemId)?.itemCode, render: (e) => <span className="font-mono text-[12px]">{itemMap.get(e.stockItemId)?.itemCode}</span> },
     { key: 'prod', header: 'Product', value: (e) => m.productMap.get(e.productId)?.name },
     { key: 'move', header: 'Status', value: (e) => e.statusTo, render: (e) => <>{e.statusFrom ? e.statusFrom : 'new'} → <strong>{e.statusTo}</strong></> },
@@ -98,10 +105,11 @@ export default function InventoryPage() {
   return (
     <div className="fade-in">
       <PageHeader title="Inventory" subtitle="Every piece, its status and its full audit trail." />
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]"><span className="font-medium">Branch</span><Bare.select aria-label="Branch filter" className="!w-auto min-w-[200px]" value={branchF} onChange={(e) => setBranchSel(e.target.value)}><option value="">All branches</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Bare.select><span className="text-[12px] text-muted">{branchF ? `Showing only stock held at ${nameOf(branchF)}` : 'Showing stock across all branches'}</span></div>
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-9">
         {STATUSES.map((s) => (
           <button key={s} onClick={() => { setStatus(status === s ? '' : s); setTab('items') }} className={`card px-3 py-2.5 text-left transition ${status === s ? 'border-gold-500 ring-2 ring-gold-200' : 'hover:border-gold-300'}`} aria-pressed={status === s}>
-            <p className="label-xs capitalize">{s}</p><p className="text-[20px] font-semibold tabular-nums">{fmtInt(counts[s] ?? 0)}</p>
+            <p className="label-xs capitalize">{s.replace('_', ' ')}</p><p className="text-[20px] font-semibold tabular-nums">{fmtInt(counts[s] ?? 0)}</p>
           </button>
         ))}
       </div>
@@ -121,8 +129,8 @@ export default function InventoryPage() {
       {tab === 'summary' && (
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3"><Stat label="Available pieces" value={summary.total.qty} /><Stat label="Net weight" value={`${fmtW(summary.total.net)} g`} /><Stat label="Stock value (cost)" value={fmtMoney(summary.total.cost)} /></div>
-          <div className="grid gap-4 lg:grid-cols-3">
-            {([['Category-wise', summary.cat], ['Metal-wise', summary.metal], ['Purity-wise', summary.purity]] as const).map(([title, g]) => (
+          <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
+            {([['Branch-wise', summary.branch], ['Category-wise', summary.cat], ['Metal-wise', summary.metal], ['Purity-wise', summary.purity]] as const).map(([title, g]) => (
               <Card key={title} title={title} pad={false}><table className="grid-table"><thead><tr><th>Group</th><th className="num">Pcs</th><th className="num">Net (g)</th><th className="num">Cost (₹)</th></tr></thead>
                 <tbody>{g.map((r) => <tr key={r.k}><td>{r.k}</td><td className="num">{r.qty}</td><td className="num">{fmtW(r.net)}</td><td className="num">{fmtNum(r.cost)}</td></tr>)}</tbody></table></Card>
             ))}

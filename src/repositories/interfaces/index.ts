@@ -1,7 +1,7 @@
 import type {
   AuditLog, Barcode, Category, Customer, Expense, ID, InwardItem, ItemStatus, Metal, MetalRate, PaymentMode, Payment,
   Product, PolishingJob, PurchaseOrder, Purity, Repair, RoleKey, Sale, SaleReturn, Settings, StockAdjustment, StockAudit,
-  StockInward, StockItem, StockLedgerEntry, Supplier, TaxConfig, User, PurchaseLine, PricingMode,
+  StockInward, StockItem, StockTransfer, StockLedgerEntry, Supplier, TaxConfig, User, PurchaseLine, PricingMode,
 } from '@/types/entities'
 
 /* ---------- generic repositories ---------- */
@@ -43,6 +43,8 @@ export interface PurchaseInput {
 }
 export interface InwardInput {
   id?: ID
+  /** receiving branch - stock is created in this branch */
+  branchId: ID
   purchaseOrderId: ID
   date: string
   notes?: string
@@ -113,6 +115,7 @@ export interface PolishingInput {
 }
 export interface AuditCreateInput {
   title: string
+  branchId: ID
   categoryId?: ID
 }
 export interface ExpenseInput {
@@ -122,6 +125,13 @@ export interface ExpenseInput {
   mode: PaymentMode
   paidTo: string
   notes?: string
+}
+
+export interface TransferInput {
+  fromBranchId: ID
+  toBranchId: ID
+  itemIds: ID[]
+  note?: string
 }
 
 export interface BarcodeLookup {
@@ -135,6 +145,8 @@ export interface LedgerCheck {
   checkedItems: number
   problems: { stockItemId: ID; itemCode: string; problem: string }[]
   productBalances: { productId: ID; available: number; ledger: number; weightAvailable: number; weightLedger: number; ok: boolean }[]
+  /** per branch x product: pieces available at the branch vs the branch ledger balance */
+  branchBalances: { branchId: ID; productId: ID; available: number; ledger: number; ok: boolean }[]
 }
 
 /* ---------- command groups (business workflows) ---------- */
@@ -171,6 +183,14 @@ export interface ErpCommands {
   }
   payments: {
     record(input: RecordPaymentInput): Promise<Payment>
+  }
+  transfers: {
+    /** dispatch: items leave the source branch's available stock and become IN TRANSIT */
+    create(input: TransferInput): Promise<StockTransfer>
+    /** destination branch confirms receipt: items become AVAILABLE there */
+    receive(id: ID): Promise<StockTransfer>
+    /** cancel while in transit: items return to the source branch */
+    cancel(id: ID, reason: string): Promise<StockTransfer>
   }
   repairs: {
     create(input: RepairInput): Promise<Repair>
@@ -249,6 +269,7 @@ export interface DataProvider {
     polishing: ReadRepository<PolishingJob>
     audits: ReadRepository<StockAudit>
     adjustments: ReadRepository<StockAdjustment>
+    transfers: ReadRepository<StockTransfer>
     auditLogs: ReadRepository<AuditLog>
   }
   commands: ErpCommands

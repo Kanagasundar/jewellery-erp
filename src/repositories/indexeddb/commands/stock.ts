@@ -6,7 +6,7 @@ import type { BarcodeLookup, ErpCommands, LedgerCheck } from '@/repositories/int
 import type { Barcode, PurchaseLine, PurchaseOrder, StockInward, StockItem } from '@/types/entities'
 import { db } from '../db'
 import {
-  BusinessError, actorName, audit, ledgerForNewItem, moveItem, nextNo, nextSeq, nowIso, requirePerm, stampNew, stampUpdate, uid,
+  BusinessError, actorName, audit, ledgerForNewItem, moveItem, nextNo, nextSeq, nowIso, requireBranch, requirePerm, stampNew, stampUpdate, uid,
 } from '../ctx'
 
 export const tx = <T>(fn: () => Promise<T>): Promise<T> => db.transaction('rw', db.tables, fn)
@@ -95,6 +95,7 @@ export const inward: ErpCommands['inward'] = {
       const po = await db.purchaseOrders.get(input.purchaseOrderId)
       if (!po) throw new BusinessError('Purchase order not found.')
       if (!['pending', 'partially_received'].includes(po.status)) throw new BusinessError(`Cannot receive stock against a ${po.status.replace('_', ' ')} order.`)
+      const branch = await requireBranch(input.branchId, 'receiving branch')
       if (!input.items.length) throw new BusinessError('Add at least one received item.')
       const perLine = new Map<string, number>()
       for (const it of input.items) {
@@ -107,11 +108,11 @@ export const inward: ErpCommands['inward'] = {
       if (existing && !['draft', 'rejected'].includes(existing.status)) throw new BusinessError('Only draft inward entries can be edited.')
       const items = input.items.map((i) => ({ ...i, receivedGross: weight(i.receivedGross), receivedStone: weight(i.receivedStone), receivedNet: netWeightOf(i.receivedGross, i.receivedStone) }))
       if (existing) {
-        const u: StockInward = { ...existing, items, date: input.date, notes: input.notes, status: 'draft', ...stampUpdate() }
+        const u: StockInward = { ...existing, branchId: branch.id, items, date: input.date, notes: input.notes, status: 'draft', ...stampUpdate() }
         await db.inwards.put(u)
         return u
       }
-      const inw: StockInward = stampNew({ id: uid(), inwardNo: await nextNo('inward', 'GRN-', 5), purchaseOrderId: po.id, supplierId: po.supplierId, date: input.date, status: 'draft' as const, items, notes: input.notes })
+      const inw: StockInward = stampNew({ id: uid(), inwardNo: await nextNo('inward', 'GRN-', 5), purchaseOrderId: po.id, supplierId: po.supplierId, branchId: branch.id, date: input.date, status: 'draft' as const, items, notes: input.notes })
       await db.inwards.add(inw)
       await audit('create', 'inward', inw.id, `${inw.inwardNo} drafted against ${po.poNumber} (no stock impact yet)`)
       return inw
@@ -151,7 +152,7 @@ export const inward: ErpCommands['inward'] = {
           id: itemId, itemCode: await nextNo('item', `${product.code}-`, 4), barcode: barcodeCode, productId: product.id, metalId: product.metalId,
           purityId: it.verifiedPurityId, grossWeight: it.receivedGross, stoneWeight: it.receivedStone, netWeight: it.receivedNet,
           costPrice: money(D(line.taxable).div(line.qty)), status: it.condition === 'damaged' ? ('damaged' as const) : ('available' as const),
-          purchaseOrderId: po.id, inwardId: inw.id, huid: product.huid, note: it.remarks || undefined,
+          purchaseOrderId: po.id, inwardId: inw.id, branchId: inw.branchId, huid: product.huid, note: it.remarks || undefined,
         })
         await db.stockItems.add(stock)
         await db.barcodes.add(stampNew({ id: uid(), code: barcodeCode, stockItemId: itemId, active: true, printCount: 0 }))
@@ -283,15 +284,23 @@ export const inventory: ErpCommands['inventory'] = {
       await audit('restock', 'stock_item', itemId, `${i.itemCode} restocked: ${reason}`)
       return u
     }),
-  /** Reconcile stock items against the immutable ledger. */
+  /** Reconcile stock items against the immutable ledger (globally and per branch). */
   reconcile: async (): Promise<LedgerCheck> => {
     const [items, ledger] = await Promise.all([db.stockItems.toArray(), db.ledger.toArray()])
     ledger.sort((a, b) => a.txnNo.localeCompare(b.txnNo))
     const problems: LedgerCheck['problems'] = []
     const last = new Map<string, string>()
+    const lastBranch = new Map<string, string>()
+    const bb = new Map<string, { q: number; w: ReturnType<typeof D> }>() // key branch|product
     const bal = new Map<string, { q: number; w: ReturnType<typeof D> }>()
     for (const e of ledger) {
       last.set(e.stockItemId, e.statusTo)
+      lastBranch.set(e.stockItemId, e.branchId)
+      const bk = `${e.branchId}|${e.productId}`
+      const bv = bb.get(bk) ?? { q: 0, w: D(0) }
+      bv.q += e.qtyIn - e.qtyOut
+      bv.w = bv.w.plus(e.weightIn).minus(e.weightOut)
+      bb.set(bk, bv)
       const b = bal.get(e.productId) ?? { q: 0, w: D(0) }
       b.q += e.qtyIn - e.qtyOut
       b.w = b.w.plus(e.weightIn).minus(e.weightOut)
@@ -301,6 +310,7 @@ export const inventory: ErpCommands['inventory'] = {
       const l = last.get(i.id)
       if (!l) problems.push({ stockItemId: i.id, itemCode: i.itemCode, problem: 'No ledger history for this item' })
       else if (l !== i.status) problems.push({ stockItemId: i.id, itemCode: i.itemCode, problem: `Item status “${i.status}” differs from ledger status “${l}”` })
+      else if (lastBranch.get(i.id) !== i.branchId) problems.push({ stockItemId: i.id, itemCode: i.itemCode, problem: 'Item branch differs from the branch of its last ledger movement' })
     }
     const productIds = new Set([...items.map((i) => i.productId), ...bal.keys()])
     const productBalances = [...productIds].map((productId) => {
@@ -310,6 +320,14 @@ export const inventory: ErpCommands['inventory'] = {
       const lw = weight(b.w)
       return { productId, available: av.length, ledger: b.q, weightAvailable: w, weightLedger: lw, ok: av.length === b.q && D(w).equals(lw) }
     })
-    return { ok: !problems.length && productBalances.every((p) => p.ok), checkedItems: items.length, problems, productBalances }
+    const keys = new Set([...bb.keys(), ...items.filter((i) => i.status === 'available').map((i) => `${i.branchId}|${i.productId}`)])
+    const branchBalances = [...keys].map((k) => {
+      const [branchId, productId] = k.split('|')
+      const av = items.filter((i) => i.branchId === branchId && i.productId === productId && i.status === 'available')
+      const b = bb.get(k) ?? { q: 0, w: D(0) }
+      const w = weight(av.reduce((s, i) => s.plus(i.netWeight), D(0)))
+      return { branchId, productId, available: av.length, ledger: b.q, ok: av.length === b.q && D(w).equals(weight(b.w)) }
+    })
+    return { ok: !problems.length && productBalances.every((p) => p.ok) && branchBalances.every((p) => p.ok), checkedItems: items.length, problems, productBalances, branchBalances }
   },
 }

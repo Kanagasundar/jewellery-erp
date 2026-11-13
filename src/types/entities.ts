@@ -122,6 +122,7 @@ export type ItemStatus =
   | 'damaged'
   | 'returned'
   | 'missing'
+  | 'in_transit'
 
 /** One physical jewellery piece. */
 export interface StockItem extends Audited {
@@ -136,6 +137,8 @@ export interface StockItem extends Audited {
   netWeight: number
   costPrice: number
   status: ItemStatus
+  /** branch that currently holds (or, while in transit, dispatched) the piece */
+  branchId: ID
   purchaseOrderId?: ID
   inwardId?: ID
   huid?: string
@@ -217,6 +220,8 @@ export interface StockInward extends Audited {
   inwardNo: string
   purchaseOrderId: ID
   supplierId: ID
+  /** receiving branch */
+  branchId: ID
   date: string
   status: InwardStatus
   items: InwardItem[]
@@ -236,6 +241,7 @@ export type LedgerRef =
   | 'audit'
   | 'reserve'
   | 'restock'
+  | 'transfer'
   | 'manual'
 
 export interface StockLedgerEntry {
@@ -244,6 +250,7 @@ export interface StockLedgerEntry {
   date: string
   stockItemId: ID
   productId: ID
+  branchId: ID
   refType: LedgerRef
   refId: ID
   refNo: string
@@ -418,6 +425,7 @@ export interface StockAudit extends Audited {
   id: ID
   auditNo: string
   title: string
+  branchId: ID
   categoryId?: ID
   status: AuditStatus
   expectedItemIds: ID[]
@@ -480,4 +488,21 @@ export interface AuditLog {
 export interface Counter {
   id: string
   value: number
+}
+
+export type TransferStatus = 'in_transit' | 'received' | 'cancelled'
+export interface StockTransfer extends Audited {
+  id: ID
+  transferNo: string
+  fromBranchId: ID
+  toBranchId: ID
+  fromBranchName: string
+  toBranchName: string
+  itemIds: ID[]
+  status: TransferStatus
+  note?: string
+  dispatchedAt: string
+  receivedAt?: string
+  receivedBy?: string
+  cancelReason?: string
 }

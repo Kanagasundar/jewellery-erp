@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type {
   AuditLog, Barcode, Category, Counter, Customer, Expense, Metal, MetalRate, Payment, PolishingJob, Product, PurchaseOrder,
   Purity, Repair, Sale, SaleReturn, Settings, StockAdjustment, StockAudit, StockInward, StockItem, StockLedgerEntry,
-  Supplier, TaxConfig, User,
+  Supplier, TaxConfig, User, StockTransfer,
 } from '@/types/entities'
 
 /**
@@ -32,6 +32,7 @@ export class ErpDB extends Dexie {
   polishing!: EntityTable<PolishingJob, 'id'>
   audits!: EntityTable<StockAudit, 'id'>
   adjustments!: EntityTable<StockAdjustment, 'id'>
+  transfers!: EntityTable<StockTransfer, 'id'>
   expenses!: EntityTable<Expense, 'id'>
   settings!: EntityTable<Settings, 'id'>
   auditLogs!: EntityTable<AuditLog, 'id'>
@@ -67,6 +68,11 @@ export class ErpDB extends Dexie {
       auditLogs: 'id, at, entity',
       counters: 'id',
       meta: 'id',
+    })
+    // v2: per-branch stock – branch index on items, stock transfers
+    this.version(2).stores({
+      stockItems: 'id, &itemCode, &barcode, productId, status, purchaseOrderId, branchId',
+      transfers: 'id, &transferNo, status',
     })
   }
 }

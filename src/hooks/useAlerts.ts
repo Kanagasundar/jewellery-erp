@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useBranch } from './useBranch'
 import { useList } from './useData'
 
 export interface Alert { id: string; tone: 'red' | 'amber' | 'blue'; title: string; detail: string; to: string }
@@ -7,14 +8,15 @@ export interface Alert { id: string; tone: 'red' | 'amber' | 'blue'; title: stri
 export function useLowStock() {
   const products = useList('products')
   const items = useList('stockItems')
+  const { scopeId } = useBranch()
   const data = useMemo(() => {
     const avail = new Map<string, number>()
-    for (const i of items.data ?? []) if (i.status === 'available') avail.set(i.productId, (avail.get(i.productId) ?? 0) + 1)
+    for (const i of items.data ?? []) if (i.status === 'available' && (!scopeId || i.branchId === scopeId)) avail.set(i.productId, (avail.get(i.productId) ?? 0) + 1)
     return (products.data ?? [])
       .filter((p) => p.status === 'active' && p.reorderLevel > 0 && (avail.get(p.id) ?? 0) <= p.reorderLevel)
       .map((p) => ({ product: p, available: avail.get(p.id) ?? 0 }))
       .sort((a, b) => a.available - b.available)
-  }, [products.data, items.data])
+  }, [products.data, items.data, scopeId])
   return { data, loading: products.isLoading || items.isLoading }
 }
 

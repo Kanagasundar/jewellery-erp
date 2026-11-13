@@ -12,13 +12,14 @@ export function sellBlockReason(item: Pick<StockItem, 'status' | 'itemCode'>): s
     damaged: 'is marked DAMAGED',
     returned: 'is a RETURNED item awaiting restock inspection',
     missing: 'is marked MISSING',
+    in_transit: 'is IN TRANSIT between branches',
   }
   const m = msgs[item.status]
   return m ? `${item.itemCode} ${m}` : null
 }
 
 export const STATUS_TONE: Record<string, string> = {
-  available: 'green', reserved: 'amber', sold: 'slate', repair: 'blue', polishing: 'violet', damaged: 'red', returned: 'amber', missing: 'red',
+  available: 'green', reserved: 'amber', sold: 'slate', repair: 'blue', polishing: 'violet', damaged: 'red', returned: 'amber', missing: 'red', in_transit: 'blue',
 }
 
 export interface InwardDiscrepancy {

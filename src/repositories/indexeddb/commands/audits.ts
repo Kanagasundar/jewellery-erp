@@ -3,7 +3,7 @@ import { netWeightOf } from '@/domain/calculations/pricing'
 import type { ErpCommands } from '@/repositories/interfaces'
 import type { AuditDiscrepancy, StockAdjustment, StockAudit } from '@/types/entities'
 import { db } from '../db'
-import { BusinessError, actorName, audit, moveItem, nextNo, nowIso, requirePerm, stampNew, stampUpdate, uid } from '../ctx'
+import { BusinessError, actorName, audit, moveItem, nextNo, nowIso, requireBranch, requirePerm, stampNew, stampUpdate, uid } from '../ctx'
 import { barcodes, tx } from './stock'
 
 async function getAudit(id: string): Promise<StockAudit> {
@@ -17,12 +17,13 @@ export const audits: ErpCommands['audits'] = {
     tx(async () => {
       requirePerm('audit.manage')
       if (!input.title.trim()) throw new BusinessError('Give the audit a title.')
+      const branch = await requireBranch(input.branchId, 'branch to audit')
       let products = await db.products.toArray()
       if (input.categoryId) products = products.filter((p) => p.categoryId === input.categoryId)
       const pids = new Set(products.map((p) => p.id))
-      const items = (await db.stockItems.toArray()).filter((i) => pids.has(i.productId) && (i.status === 'available' || i.status === 'reserved'))
+      const items = (await db.stockItems.toArray()).filter((i) => i.branchId === branch.id && pids.has(i.productId) && (i.status === 'available' || i.status === 'reserved'))
       const a: StockAudit = stampNew({
-        id: uid(), auditNo: await nextNo('audit', 'AUD-', 4), title: input.title, categoryId: input.categoryId, status: 'in_progress' as const,
+        id: uid(), auditNo: await nextNo('audit', 'AUD-', 4), title: input.title, branchId: branch.id, categoryId: input.categoryId, status: 'in_progress' as const,
         expectedItemIds: items.map((i) => i.id), scans: [], discrepancies: [],
       })
       await db.audits.add(a)

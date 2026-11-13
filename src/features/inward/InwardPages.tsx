@@ -8,6 +8,7 @@ import { Badge, EmptyState, Notice, Spinner, StatusBadge } from '@/components/ui
 import { Card, KV, PageHeader } from '@/components/ui/Layout'
 import { useConfirm } from '@/components/ui/Modal'
 import { inwardDiscrepancy } from '@/domain/workflows/rules'
+import { useBranch } from '@/hooks/useBranch'
 import { useAction, useList, useMasters } from '@/hooks/useData'
 import { erp } from '@/services'
 import type { StockInward } from '@/types/entities'
@@ -17,6 +18,7 @@ export function InwardListPage() {
   const nav = useNavigate()
   const { can } = useAuth()
   const m = useMasters()
+  const { nameOf } = useBranch()
   const inwards = useList('inwards')
   const pos = useList('purchaseOrders')
   const poNo = (id: string) => pos.data?.find((p) => p.id === id)?.poNumber ?? '—'
@@ -25,6 +27,7 @@ export function InwardListPage() {
     { key: 'date', header: 'Date', value: (i) => i.date, render: (i) => fmtDate(i.date) },
     { key: 'po', header: 'Purchase order', value: (i) => poNo(i.purchaseOrderId), render: (i) => <Link onClick={(e) => e.stopPropagation()} className="text-gold-700 hover:underline" to={`/purchases/${i.purchaseOrderId}`}>{poNo(i.purchaseOrderId)}</Link> },
     { key: 'sup', header: 'Supplier', value: (i) => m.supplierMap.get(i.supplierId)?.name },
+    { key: 'br', header: 'Branch', value: (i) => nameOf(i.branchId) },
     { key: 'pcs', header: 'Pieces', num: true, value: (i) => i.items.length, render: (i) => `${i.items.filter((x) => x.accepted).length} / ${i.items.length}` },
     { key: 'disc', header: 'Discrepancies', num: true, value: (i) => i.items.filter((x) => inwardDiscrepancy(x).any).length, render: (i) => { const n = i.items.filter((x) => inwardDiscrepancy(x).any).length; return n ? <Badge tone="amber">{n}</Badge> : <span className="text-muted">—</span> } },
     { key: 'st', header: 'Status', value: (i) => i.status, render: (i) => <StatusBadge status={i.status} /> },
@@ -45,6 +48,7 @@ export function InwardDetailPage() {
   const { can } = useAuth()
   const confirm = useConfirm()
   const m = useMasters()
+  const { nameOf } = useBranch()
   const inwards = useList('inwards'), pos = useList('purchaseOrders'), items = useList('stockItems')
   const inw = inwards.data?.find((i) => i.id === id)
   const submit = useAction(() => erp.commands.inward.submit(id), { success: 'Submitted for approval' })
@@ -74,7 +78,7 @@ export function InwardDetailPage() {
       {inw.status === 'draft' && <div className="mb-3"><Notice tone="amber">Draft — stock has <strong>not</strong> been updated. Submit it for approval to proceed.</Notice></div>}
       {inw.status === 'rejected' && <div className="mb-3"><Notice tone="red">Rejected: {inw.rejectReason}</Notice></div>}
       {inw.status === 'completed' && <div className="mb-3"><Notice tone="green">Completed {fmtDateTime(inw.approvedAt)} by {inw.approvedBy}. Stock items and barcodes were created.</Notice></div>}
-      <Card className="mb-4"><dl className="grid grid-cols-2 gap-4 lg:grid-cols-4"><KV label="Purchase order">{po && <Link className="text-gold-700 hover:underline" to={`/purchases/${po.id}`}>{po.poNumber}</Link>}</KV><KV label="Supplier invoice">{po?.invoiceNo}</KV><KV label="Pieces accepted">{inw.items.filter((i) => i.accepted).length} of {inw.items.length}</KV><KV label="Notes">{inw.notes}</KV></dl></Card>
+      <Card className="mb-4"><dl className="grid grid-cols-2 gap-4 lg:grid-cols-4"><KV label="Purchase order">{po && <Link className="text-gold-700 hover:underline" to={`/purchases/${po.id}`}>{po.poNumber}</Link>}</KV><KV label="Supplier invoice">{po?.invoiceNo}</KV><KV label="Pieces accepted">{inw.items.filter((i) => i.accepted).length} of {inw.items.length}</KV><KV label="Receiving branch">{nameOf(inw.branchId)}</KV><KV label="Notes">{inw.notes}</KV></dl></Card>
       <Card title="Pieces" pad={false} className="print-area">
         <div className="overflow-x-auto"><table className="grid-table">
           <thead><tr><th>#</th><th>Product</th><th className="num">Expected (g)</th><th className="num">Gross (g)</th><th className="num">Stone (g)</th><th className="num">Net (g)</th><th>Purity</th><th>Condition</th><th>Result</th><th>Flags</th><th>Item / barcode</th></tr></thead>

@@ -35,6 +35,15 @@ export const uid = (): string =>
 
 export const nowIso = () => clock.iso()
 
+/** Validate a branch id against Settings → Branches and return it with its name. */
+export async function requireBranch(id: string | undefined, what = 'branch'): Promise<{ id: string; name: string }> {
+  if (!id) throw new BusinessError(`Select a ${what}.`)
+  const s = await db.settings.get('main')
+  const b = s?.branches.find((x) => x.id === id)
+  if (!b) throw new BusinessError(`Unknown ${what}. Check Settings → Branches.`)
+  return b
+}
+
 export const stampNew = <T extends object>(o: T) => ({
   ...o,
   createdAt: nowIso(),
@@ -119,7 +128,7 @@ export async function moveItem(item: StockItem, to: ItemStatus | null, o: MoveOp
   const afterWeight = weight(D(before.weight).plus(wIn).minus(wOut))
   const txnNo = await nextNo('ledger', 'SL-', 6)
   const entry: StockLedgerEntry = {
-    id: uid(), txnNo, date: nowIso(), stockItemId: item.id, productId: item.productId,
+    id: uid(), txnNo, date: nowIso(), stockItemId: item.id, productId: item.productId, branchId: updated.branchId,
     refType: o.ref.type, refId: o.ref.id, refNo: o.ref.no, statusFrom: from,
     statusTo: target, qtyIn, qtyOut, weightIn: weight(wIn), weightOut: weight(wOut),
     prevQty: before.qty, prevWeight: before.weight, resultQty: afterQty, resultWeight: afterWeight,
@@ -138,7 +147,7 @@ export async function ledgerForNewItem(item: StockItem, o: { reason: string; ref
   const prevW = weight(D(totals.weight).minus(isAvail ? item.netWeight : 0))
   const txnNo = await nextNo('ledger', 'SL-', 6)
   await db.ledger.add({
-    id: uid(), txnNo, date: nowIso(), stockItemId: item.id, productId: item.productId,
+    id: uid(), txnNo, date: nowIso(), stockItemId: item.id, productId: item.productId, branchId: item.branchId,
     refType: o.ref.type, refId: o.ref.id, refNo: o.ref.no, statusFrom: null, statusTo: item.status,
     qtyIn: isAvail ? 1 : 0, qtyOut: 0, weightIn: isAvail ? item.netWeight : 0, weightOut: 0,
     prevQty, prevWeight: prevW, resultQty: totals.qty, resultWeight: totals.weight,

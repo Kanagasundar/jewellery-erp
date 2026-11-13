@@ -63,6 +63,11 @@ const commands: ErpCommands = {
     returnItems: (i) => post(`/sales/${i.saleId}/returns`, i),
   },
   payments: { record: (i) => post('/payments', i) },
+  transfers: {
+    create: (i) => post('/transfers', i),
+    receive: (id) => post(`/transfers/${id}/receive`),
+    cancel: (id, reason) => post(`/transfers/${id}/cancel`, { reason }),
+  },
   repairs: {
     create: (i) => post('/repairs', i),
     assign: (id, artisanId) => post(`/repairs/${id}/assign`, { artisanId }),
@@ -131,7 +136,7 @@ export const apiProvider: DataProvider = {
     suppliers: rest('suppliers'), expenses: rest('expenses'),
     stockItems: ro('stock-items'), barcodes: ro('barcodes'), purchaseOrders: ro('purchases'), inwards: ro('inwards'),
     ledger: ro('stock-ledger'), sales: ro('sales'), saleReturns: ro('sale-returns'), payments: ro('payments'), repairs: ro('repairs'),
-    polishing: ro('polishing'), audits: ro('stock-audits'), adjustments: ro('stock-adjustments'), auditLogs: ro('audit-logs'),
+    polishing: ro('polishing'), audits: ro('stock-audits'), adjustments: ro('stock-adjustments'), transfers: ro('transfers'), auditLogs: ro('audit-logs'),
   },
   commands,
   auth,

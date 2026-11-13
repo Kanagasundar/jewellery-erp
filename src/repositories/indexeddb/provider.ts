@@ -2,6 +2,7 @@ import type { AuthService, DataProvider, SessionUser } from '@/repositories/inte
 import { audits } from './commands/audits'
 import { payments, sales } from './commands/sales'
 import { barcodes, inventory, inward, purchases, tx } from './commands/stock'
+import { transfers } from './commands/transfers'
 import { polishing, repairs } from './commands/workshop'
 import { BusinessError, nextNo, requirePerm, setActor } from './ctx'
 import { db } from './db'
@@ -56,11 +57,18 @@ export const idbProvider: DataProvider = {
     },
   },
   commands: {
-    purchases, inward, barcodes, inventory, sales, payments, repairs, polishing, audits,
+    purchases, inward, barcodes, inventory, sales, payments, transfers, repairs, polishing, audits,
     system: {
       getSettings: async () => (await db.settings.get('main'))!,
       saveSettings: async (s) => {
         requirePerm('settings.manage')
+        const cur = await db.settings.get('main')
+        const kept = new Set(s.branches.map((b) => b.id))
+        if (!s.branches.length) throw new BusinessError('At least one branch is required.')
+        for (const b of cur?.branches ?? []) {
+          if (kept.has(b.id)) continue
+          if ((await db.stockItems.where('branchId').equals(b.id).count()) > 0) throw new BusinessError(`${b.name} still holds stock (or has stock in transit) - transfer it out before removing the branch.`)
+        }
         await db.settings.put(s)
         return s
       },

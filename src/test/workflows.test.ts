@@ -1,7 +1,8 @@
-﻿import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { customerBalance, customerLedger, paidAgainst, saleOutstanding, unallocatedAmount } from '@/domain/calculations/ledger'
 import { invoiceTotals, priceItem } from '@/domain/calculations/pricing'
 import { D, money } from '@/domain/calculations/decimal'
+import { transfers } from '@/repositories/indexeddb/commands/transfers'
 import { audits } from '@/repositories/indexeddb/commands/audits'
 import { payments, sales } from '@/repositories/indexeddb/commands/sales'
 import { barcodes, inventory, inward, purchases } from '@/repositories/indexeddb/commands/stock'
@@ -15,6 +16,7 @@ import { uid } from '@/repositories/indexeddb/ctx'
 
 const as = (id: string, role: RoleKey) => setActor({ id, name: id, email: '', role })
 const admin = () => as('u-super', 'super_admin')
+const BR = 'br-main'
 
 beforeAll(async () => {
   await resetAndSeed()
@@ -23,7 +25,7 @@ beforeAll(async () => {
 
 const availableOf = async (code: string) => {
   const p = (await db.products.where('code').equals(code).first())!
-  return db.stockItems.where('productId').equals(p.id).and((i) => i.status === 'available').toArray()
+  return db.stockItems.where('productId').equals(p.id).and((i) => i.status === 'available' && i.branchId === BR).toArray()
 }
 
 describe('pricing (decimal safe)', () => {
@@ -82,7 +84,7 @@ describe('Workflow 1 + 6: purchase â†’ partial inward â†’ full inward'
     const p = (await db.products.where('code').equals('RNG-003').first())!
     const items = mk(2).map((i) => ({ ...i, productId: p.id }))
     const before = await db.stockItems.count()
-    const inw = await inward.save({ purchaseOrderId: poId, date: new Date().toISOString(), items })
+    const inw = await inward.save({ branchId: BR, purchaseOrderId: poId, date: new Date().toISOString(), items })
     await inward.submit(inw.id)
     expect(await db.stockItems.count()).toBe(before)
     expect((await db.ledger.count())).toBe(await db.ledger.count())
@@ -96,8 +98,8 @@ describe('Workflow 1 + 6: purchase â†’ partial inward â†’ full inward'
   })
   it('cannot over-receive; receiving the remainder completes the order', async () => {
     const p = (await db.products.where('code').equals('RNG-003').first())!
-    await expect(inward.save({ purchaseOrderId: poId, date: new Date().toISOString(), items: mk(3).map((i) => ({ ...i, productId: p.id })) })).rejects.toThrow(/more pieces/)
-    const inw = await inward.save({ purchaseOrderId: poId, date: new Date().toISOString(), items: mk(2).map((i) => ({ ...i, productId: p.id })) })
+    await expect(inward.save({ branchId: BR, purchaseOrderId: poId, date: new Date().toISOString(), items: mk(3).map((i) => ({ ...i, productId: p.id })) })).rejects.toThrow(/more pieces/)
+    const inw = await inward.save({ branchId: BR, purchaseOrderId: poId, date: new Date().toISOString(), items: mk(2).map((i) => ({ ...i, productId: p.id })) })
     await inward.submit(inw.id)
     await inward.approve(inw.id)
     expect((await db.purchaseOrders.get(poId))!.status).toBe('received')
@@ -136,7 +138,7 @@ describe('barcode scanning', () => {
 describe('Workflow 2 + 7: sale, split payment, stock reduction, ledger', () => {
   it('bills a customer with split cash + UPI, reduces stock, snapshots rate', async () => {
     const [item] = await availableOf('CHN-001')
-    const sale = await sales.create({ customerId: 'cu-1', items: [{ stockItemId: item.id }], payments: [{ mode: 'cash', amount: 10000 }], notes: '' })
+    const sale = await sales.create({ branchId: BR, customerId: 'cu-1', items: [{ stockItemId: item.id }], payments: [{ mode: 'cash', amount: 10000 }], notes: '' })
     expect(sale.lines[0].ratePerGram).toBeGreaterThan(0)
     expect((await db.stockItems.get(item.id))!.status).toBe('sold')
     const pays = await db.payments.toArray()
@@ -150,14 +152,14 @@ describe('Workflow 2 + 7: sale, split payment, stock reduction, ledger', () => {
   })
   it('refuses to sell the same item twice', async () => {
     const [item] = await availableOf('CHN-001')
-    const s = await sales.create({ customerId: null, items: [{ stockItemId: item.id }], payments: [{ mode: 'cash', amount: 0.01 }] }).catch((e: Error) => e)
+    const s = await sales.create({ branchId: BR, customerId: null, items: [{ stockItemId: item.id }], payments: [{ mode: 'cash', amount: 0.01 }] }).catch((e: Error) => e)
     expect(s).toBeInstanceOf(Error) // walk-in must pay in full
     const [sold] = await db.stockItems.where('status').equals('sold').toArray()
-    await expect(sales.create({ customerId: 'cu-1', items: [{ stockItemId: sold.id }], payments: [] })).rejects.toThrow(/SOLD/)
+    await expect(sales.create({ branchId: BR, customerId: 'cu-1', items: [{ stockItemId: sold.id }], payments: [] })).rejects.toThrow(/SOLD/)
   })
   it('credit sale shows in customer ledger as outstanding; receipts reduce it', async () => {
     const [item] = await availableOf('EAR-002')
-    const sale = await sales.create({ customerId: 'cu-2', items: [{ stockItemId: item.id }], payments: [] })
+    const sale = await sales.create({ branchId: BR, customerId: 'cu-2', items: [{ stockItemId: item.id }], payments: [] })
     const c = (await db.customers.get('cu-2'))!
     const args = async () => [await db.sales.toArray(), await db.saleReturns.toArray(), await db.payments.toArray(), await db.repairs.toArray()] as const
     const [s, r, p, rep] = await args()
@@ -178,14 +180,14 @@ describe('Workflow 2 + 7: sale, split payment, stock reduction, ledger', () => {
     expect(unallocatedAmount(pays, 'customer', 'cu-3')).toBeGreaterThanOrEqual(20000)
     const [item] = await availableOf('PND-002')
     const before = unallocatedAmount(pays, 'customer', 'cu-3')
-    const sale = await sales.create({ customerId: 'cu-3', items: [{ stockItemId: item.id }], payments: [], advanceAdjust: 5000 })
+    const sale = await sales.create({ branchId: BR, customerId: 'cu-3', items: [{ stockItemId: item.id }], payments: [], advanceAdjust: 5000 })
     const after = await db.payments.toArray()
     expect(unallocatedAmount(after, 'customer', 'cu-3')).toBe(money(D(before).minus(5000)))
     expect(paidAgainst(after, 'sale', sale.id)).toBe(5000)
   })
   it('sales person cannot cancel; admin cancel restores stock and refunds', async () => {
     const [item] = await availableOf('SLV-003')
-    const sale = await sales.create({ customerId: null, items: [{ stockItemId: item.id }], payments: await totalAsPay(item.id) })
+    const sale = await sales.create({ branchId: BR, customerId: null, items: [{ stockItemId: item.id }], payments: await totalAsPay(item.id) })
     as('u-sales', 'sales')
     await expect(sales.cancel(sale.id, 'x')).rejects.toThrow(/Permission denied/)
     as('u-admin', 'shop_admin')
@@ -200,7 +202,7 @@ describe('Workflow 2 + 7: sale, split payment, stock reduction, ledger', () => {
   })
   it('sales return refunds and puts item in returned status; restock makes it sellable', async () => {
     const [item] = await availableOf('BNG-001')
-    const sale = await sales.create({ customerId: null, items: [{ stockItemId: item.id }], payments: await totalAsPay(item.id) })
+    const sale = await sales.create({ branchId: BR, customerId: null, items: [{ stockItemId: item.id }], payments: await totalAsPay(item.id) })
     const ret = await sales.returnItems({ saleId: sale.id, itemIds: [item.id], reason: 'Size issue', refundMode: 'cash' })
     expect(ret.refund).toBe(sale.total)
     expect((await db.stockItems.get(item.id))!.status).toBe('returned')
@@ -243,7 +245,7 @@ describe('Workflow 3: repair lifecycle', () => {
     const [item] = await availableOf('RNG-001')
     const r = await repairs.create({ customerId: 'cu-5', stockItemId: item.id, description: 'Showroom piece', repairType: 'Polish', receivedWeight: item.grossWeight, damage: '', instructions: '', expectedDelivery: new Date().toISOString(), labourEstimate: 0, photos: [] })
     expect((await db.stockItems.get(item.id))!.status).toBe('repair')
-    await expect(sales.create({ customerId: 'cu-1', items: [{ stockItemId: item.id }], payments: [] })).rejects.toThrow(/REPAIR/)
+    await expect(sales.create({ branchId: BR, customerId: 'cu-1', items: [{ stockItemId: item.id }], payments: [] })).rejects.toThrow(/REPAIR/)
     await repairs.cancel(r.id, 'not needed')
     expect((await db.stockItems.get(item.id))!.status).toBe('available')
   })
@@ -254,7 +256,7 @@ describe('Workflow 4: polishing lifecycle', () => {
     const [item] = await availableOf('NCK-003')
     const j = await polishing.create({ stockItemId: item.id, polishType: 'Buffing', artisanId: 'u-art2', labourCharge: 200, expectedDate: new Date().toISOString(), remarks: '' })
     expect((await db.stockItems.get(item.id))!.status).toBe('polishing')
-    await expect(sales.create({ customerId: 'cu-1', items: [{ stockItemId: item.id }], payments: [] })).rejects.toThrow(/POLISHING/)
+    await expect(sales.create({ branchId: BR, customerId: 'cu-1', items: [{ stockItemId: item.id }], payments: [] })).rejects.toThrow(/POLISHING/)
     await polishing.start(j.id)
     await expect(polishing.submitForQc(j.id, item.grossWeight + 1, '')).rejects.toThrow(/cannot exceed/)
     const after = D(item.grossWeight).minus(0.05).toNumber()
@@ -275,7 +277,7 @@ describe('Workflow 4: polishing lifecycle', () => {
 
 describe('Workflow 5: stock audit â†’ adjustment â†’ ledger', () => {
   it('detects missing, extra and weight variance; adjusts only on approval', async () => {
-    const a = await audits.create({ title: 'Earrings', categoryId: 'c-ear' })
+    const a = await audits.create({ branchId: BR, title: 'Earrings', categoryId: 'c-ear' })
     const items = await db.stockItems.filter((i) => a.expectedItemIds.includes(i.id)).toArray()
     expect(items.length).toBeGreaterThan(2)
     const [missing, weighed, ...rest] = items
@@ -301,7 +303,7 @@ describe('Workflow 5: stock audit â†’ adjustment â†’ ledger', () => {
   })
   it('sales person cannot approve an audit', async () => {
     admin()
-    const a = await audits.create({ title: 'x', categoryId: 'c-pend' })
+    const a = await audits.create({ branchId: BR, title: 'x', categoryId: 'c-pend' })
     await audits.submit(a.id)
     as('u-sales', 'sales')
     await expect(audits.approve(a.id, 'x')).rejects.toThrow(/Permission denied/)
@@ -341,3 +343,68 @@ describe('master data + persistence', () => {
   })
 })
 
+
+describe('per-branch stock & transfers', () => {
+  it('every item has a branch and the ledger reconciles per branch', async () => {
+    admin()
+    const items = await db.stockItems.toArray()
+    expect(items.every((i) => !!i.branchId)).toBe(true)
+    expect(new Set(items.filter((i) => i.status !== 'in_transit').map((i) => i.branchId)).size).toBe(2)
+    const rc = await inventory.reconcile()
+    expect(rc.ok).toBe(true)
+    expect(rc.branchBalances.length).toBeGreaterThan(0)
+  })
+  it('items at another branch cannot be billed; in-transit items cannot be billed anywhere', async () => {
+    admin()
+    const atBranch2 = await db.stockItems.filter((i) => i.branchId === 'br-2' && i.status === 'available').first()
+    expect(atBranch2).toBeDefined()
+    await expect(sales.create({ branchId: BR, customerId: 'cu-1', items: [{ stockItemId: atBranch2!.id }], payments: [] })).rejects.toThrow(/held at Branch 2/)
+    const transit = await db.stockItems.where('status').equals('in_transit').first()
+    expect(transit).toBeDefined()
+    await expect(sales.create({ branchId: 'br-2', customerId: 'cu-1', items: [{ stockItemId: transit!.id }], payments: [] })).rejects.toThrow(/IN TRANSIT/)
+  })
+  it('dispatch -> receive moves stock between branches through the ledger; cancel returns it', async () => {
+    admin()
+    const [it1, it2] = await db.stockItems.filter((i) => i.branchId === BR && i.status === 'available' && i.productId === 'pr-1').toArray()
+    const t = await transfers.create({ fromBranchId: BR, toBranchId: 'br-2', itemIds: [it1.id, it2.id] })
+    expect((await db.stockItems.get(it1.id))!.status).toBe('in_transit')
+    expect((await db.stockItems.get(it1.id))!.branchId).toBe(BR)
+    expect((await inventory.reconcile()).ok).toBe(true)
+    as('u-sales', 'sales')
+    await expect(transfers.receive(t.id)).rejects.toThrow(/Permission denied/)
+    as('u-stock', 'stock_manager')
+    await transfers.receive(t.id)
+    expect((await db.stockItems.get(it1.id))!).toMatchObject({ status: 'available', branchId: 'br-2' })
+    await expect(transfers.receive(t.id)).rejects.toThrow(/already received/)
+    expect((await inventory.reconcile()).ok).toBe(true)
+    admin()
+    // now sellable at Branch 2, not at main
+    await expect(sales.create({ branchId: BR, customerId: 'cu-1', items: [{ stockItemId: it1.id }], payments: [] })).rejects.toThrow(/held at Branch 2/)
+    // cancel path
+    const [it3] = await db.stockItems.filter((i) => i.branchId === BR && i.status === 'available' && i.productId === 'pr-1').toArray()
+    const t2 = await transfers.create({ fromBranchId: BR, toBranchId: 'br-2', itemIds: [it3.id] })
+    await expect(transfers.cancel(t2.id, '')).rejects.toThrow(/reason/)
+    await transfers.cancel(t2.id, 'Wrong item')
+    expect((await db.stockItems.get(it3.id))!).toMatchObject({ status: 'available', branchId: BR })
+    expect((await inventory.reconcile()).ok).toBe(true)
+    admin()
+  })
+  it('rejects same-branch, non-available and wrong-source transfers', async () => {
+    admin()
+    const [a] = await db.stockItems.filter((i) => i.branchId === BR && i.status === 'available').toArray()
+    await expect(transfers.create({ fromBranchId: BR, toBranchId: BR, itemIds: [a.id] })).rejects.toThrow(/different/)
+    await expect(transfers.create({ fromBranchId: 'br-2', toBranchId: BR, itemIds: [a.id] })).rejects.toThrow(/not held at/)
+    const sold = await db.stockItems.where('status').equals('sold').first()
+    await expect(transfers.create({ fromBranchId: sold!.branchId, toBranchId: sold!.branchId === BR ? 'br-2' : BR, itemIds: [sold!.id] })).rejects.toThrow(/only available/)
+  })
+  it('audit is per branch; a branch holding stock cannot be removed', async () => {
+    admin()
+    const a2 = await audits.create({ title: 'B2', branchId: 'br-2' })
+    const ids = await db.stockItems.filter((i) => a2.expectedItemIds.includes(i.id)).toArray()
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids.every((i) => i.branchId === 'br-2')).toBe(true)
+    const { idbProvider } = await import('@/repositories/indexeddb/provider')
+    const st = (await db.settings.get('main'))!
+    await expect(idbProvider.commands.system.saveSettings({ ...st, branches: st.branches.filter((b) => b.id !== 'br-2') })).rejects.toThrow(/still holds stock/)
+  })
+})

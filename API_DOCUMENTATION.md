@@ -60,6 +60,13 @@ Each is a single transaction; on any failure nothing is persisted.
 * `POST /stock-items/{id}/reserve {customerId,note}` · `/release` · `/damage {reason}` · `/restock {reason}` (each writes a ledger row).
 * `GET /stock/reconcile` → `LedgerCheck` (see TS interface) — must be `ok:true` at all times.
 
+### Branches & stock transfers
+* Branches live in `settings.branches` (`GET/PUT /settings`; production: a `branches` resource). Removing a branch that holds stock → 422.
+* `POST /inwards` / `PUT` take `branchId` (receiving branch). `POST /sales` takes `branchId`; every item must be held at that branch (422 otherwise). `POST /stock-audits` takes `branchId`.
+* `POST /transfers {fromBranchId,toBranchId,itemIds[],note?}` (`transfers.manage`) — dispatch: items must be `available` at the source; they become `in_transit` (ledger out at source).
+* `POST /transfers/{id}/receive` — items become `available` at the destination (ledger in; `branchId` changes). `POST /transfers/{id}/cancel {reason}` — only while in transit; items return to the source.
+* `GET /stock/reconcile` additionally returns `branchBalances[]`.
+
 ### Sales
 * `POST /sales` — `SaleInput {customerId|null, walkInName?, walkInPhone?, items[{stockItemId, discount?}], payments[{mode,amount,reference?}], advanceAdjust?, notes?, date?}`.
   Server: lock items `FOR UPDATE`, require `available`, **recompute pricing authoritatively** from product formula + metal rate in force, snapshot rate on each line, mark items `sold` + ledger, create payments + allocations, consume advance FIFO. Walk-in must pay in full. → `Sale`.

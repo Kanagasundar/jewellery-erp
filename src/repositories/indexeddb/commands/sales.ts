@@ -5,7 +5,7 @@ import { sellBlockReason } from '@/domain/workflows/rules'
 import type { ErpCommands, RecordPaymentInput } from '@/repositories/interfaces'
 import type { Payment, PaymentAllocation, PaymentMode, Sale, SaleLine, SaleReturn } from '@/types/entities'
 import { db } from '../db'
-import { BusinessError, audit, latestRate, moveItem, nextNo, nowIso, requirePerm, stampNew, stampUpdate, uid } from '../ctx'
+import { BusinessError, audit, latestRate, moveItem, nextNo, nowIso, requireBranch, requirePerm, stampNew, stampUpdate, uid } from '../ctx'
 import { tx } from './stock'
 
 interface PayRowInput {
@@ -42,6 +42,7 @@ export const sales: ErpCommands['sales'] = {
       const ids = input.items.map((i) => i.stockItemId)
       if (new Set(ids).size !== ids.length) throw new BusinessError('The same item appears twice on the bill.')
       const settings = await db.settings.get('main')
+      const branch = await requireBranch(input.branchId, 'selling branch')
       const date = input.date ?? nowIso()
       const customer = input.customerId ? await db.customers.get(input.customerId) : undefined
       if (input.customerId && !customer) throw new BusinessError('Selected customer not found.')
@@ -52,6 +53,10 @@ export const sales: ErpCommands['sales'] = {
         if (!item) throw new BusinessError('An item on the bill no longer exists.')
         const block = sellBlockReason(item)
         if (block) throw new BusinessError(`Cannot bill: ${block}.`)
+        if (item.branchId !== branch.id) {
+          const at = settings?.branches.find((b) => b.id === item.branchId)?.name ?? 'another branch'
+          throw new BusinessError(`Cannot bill: ${item.itemCode} is held at ${at}, not ${branch.name}. Transfer it to ${branch.name} first.`)
+        }
         const product = await db.products.get(item.productId)
         const purity = await db.purities.get(item.purityId)
         if (!product || !purity) throw new BusinessError(`${item.itemCode}: product or purity master data missing.`)
@@ -86,7 +91,7 @@ export const sales: ErpCommands['sales'] = {
       const sale: Sale = stampNew({
         id: uid(), invoiceNo: await nextNo('invoice', `${settings?.invoicePrefix ?? 'INV'}-`, 5), date, customerId: customer?.id ?? null,
         customerName: customer?.name ?? (input.walkInName?.trim() || 'Walk-in Customer'), customerPhone: customer?.phone ?? input.walkInPhone ?? '',
-        branchId: input.branchId, branchName: settings?.branches?.find((b) => b.id === input.branchId)?.name,
+        branchId: branch.id, branchName: branch.name,
         status: 'completed' as const, lines, ...totals, returnedValue: 0, notes: input.notes,
       })
       await db.sales.add(sale)

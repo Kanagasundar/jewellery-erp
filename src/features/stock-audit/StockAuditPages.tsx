@@ -11,6 +11,7 @@ import { Input, Select } from '@/components/ui/Form'
 import { Card, PageHeader, Stat, Tabs } from '@/components/ui/Layout'
 import { Modal, useConfirm } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
+import { useBranch } from '@/hooks/useBranch'
 import { useAction, useIndex, useList, useMasters } from '@/hooks/useData'
 import { erp } from '@/services'
 import type { AuditDiscrepancy, StockAudit } from '@/types/entities'
@@ -20,14 +21,16 @@ export function AuditListPage() {
   const nav = useNavigate()
   const { can } = useAuth()
   const m = useMasters()
+  const { branches, operating, nameOf } = useBranch()
   const audits = useList('audits'), adj = useList('adjustments')
   const [dlg, setDlg] = useState(false)
-  const [title, setTitle] = useState(''), [cat, setCat] = useState('')
+  const [title, setTitle] = useState(''), [cat, setCat] = useState(''), [br, setBr] = useState('')
   const [tab, setTab] = useState('audits')
-  const create = useAction(() => erp.commands.audits.create({ title, categoryId: cat || undefined }), { success: (a) => `${a.auditNo} started — ${a.expectedItemIds.length} items expected`, onSuccess: (a) => { setDlg(false); nav(`/stock-audit/${a.id}`) } })
+  const create = useAction(() => erp.commands.audits.create({ title, branchId: br, categoryId: cat || undefined }), { success: (a) => `${a.auditNo} started — ${a.expectedItemIds.length} items expected`, onSuccess: (a) => { setDlg(false); nav(`/stock-audit/${a.id}`) } })
   const cols: Column<StockAudit>[] = [
     { key: 'no', header: 'Audit no.', value: (a) => a.auditNo, render: (a) => <span className="font-mono text-[12px] font-medium">{a.auditNo}</span> },
     { key: 'title', header: 'Title', value: (a) => a.title, render: (a) => <span className="font-medium">{a.title}</span> },
+    { key: 'br', header: 'Branch', value: (a) => nameOf(a.branchId) },
     { key: 'scope', header: 'Scope', value: (a) => m.categoryMap.get(a.categoryId ?? '')?.name ?? 'Whole shop' },
     { key: 'date', header: 'Started', value: (a) => a.createdAt, render: (a) => fmtDateTime(a.createdAt) },
     { key: 'exp', header: 'Expected', num: true, value: (a) => a.expectedItemIds.length },
@@ -37,7 +40,7 @@ export function AuditListPage() {
   ]
   return (
     <div className="fade-in">
-      <PageHeader title="Stock checking" subtitle="Physical verification against system stock. Nothing changes until an approver posts the adjustment." actions={can('audit.manage') && <Button variant="primary" icon={<Plus size={15} />} onClick={() => { setTitle(`Stock check ${new Date().toLocaleDateString('en-IN')}`); setCat(''); setDlg(true) }}>New audit session</Button>} />
+      <PageHeader title="Stock checking" subtitle="Physical verification against system stock. Nothing changes until an approver posts the adjustment." actions={can('audit.manage') && <Button variant="primary" icon={<Plus size={15} />} onClick={() => { setTitle(`Stock check ${new Date().toLocaleDateString('en-IN')}`); setCat(''); setBr(operating?.id ?? ''); setDlg(true) }}>New audit session</Button>} />
       <Tabs value={tab} onChange={setTab} tabs={[{ key: 'audits', label: 'Audit sessions', count: audits.data?.length }, { key: 'adj', label: 'Stock adjustments', count: adj.data?.length }]} />
       {tab === 'audits' ? <DataTable rows={audits.data} columns={cols} rowKey={(a) => a.id} loading={audits.isLoading} error={audits.error} initialSort={{ key: 'no', dir: 'desc' }} onRowClick={(a) => nav(`/stock-audit/${a.id}`)} empty={{ title: 'No audits yet', hint: 'Start a session and scan the items on the shelf.' }} />
         : <DataTable rows={adj.data} rowKey={(a) => a.id} loading={adj.isLoading} initialSort={{ key: 'date', dir: 'desc' }} empty={{ title: 'No stock adjustments posted' }} columns={[
@@ -45,8 +48,8 @@ export function AuditListPage() {
           { key: 'kind', header: 'Adjustment', value: (a) => a.kind, render: (a) => <Badge tone={a.kind === 'found' ? 'green' : 'red'}>{a.kind === 'weight' ? 'Weight correction' : a.kind === 'found' ? 'Found' : 'Written off as missing'}</Badge> },
           { key: 'ow', header: 'Old (g)', num: true, value: (a) => a.oldWeight, render: (a) => fmtW(a.oldWeight) }, { key: 'nw', header: 'New (g)', num: true, value: (a) => a.newWeight, render: (a) => fmtW(a.newWeight) },
           { key: 'by', header: 'Approved by', value: (a) => a.approvedBy }, { key: 'why', header: 'Reason', value: (a) => a.reason, render: (a) => <span className="text-muted">{a.reason}</span> }]} />}
-      <Modal open={dlg} onClose={() => setDlg(false)} size="sm" title="New audit session" footer={<><Button onClick={() => setDlg(false)}>Cancel</Button><Button variant="primary" disabled={!title.trim()} loading={create.pending} onClick={() => create.run()}>Start</Button></>}>
-        <div className="space-y-3"><Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required /><Select label="Scope" value={cat} onChange={(e) => setCat(e.target.value)}><option value="">Whole shop (all available items)</option>{(m.categories.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>
+      <Modal open={dlg} onClose={() => setDlg(false)} size="sm" title="New audit session" footer={<><Button onClick={() => setDlg(false)}>Cancel</Button><Button variant="primary" disabled={!title.trim() || !br} loading={create.pending} onClick={() => create.run()}>Start</Button></>}>
+        <div className="space-y-3"><Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required /><Select label="Branch to audit" required value={br} onChange={(e) => setBr(e.target.value)} hint="Only items held at this branch are expected">{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Select><Select label="Scope" value={cat} onChange={(e) => setCat(e.target.value)}><option value="">All categories</option>{(m.categories.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></div>
       </Modal>
     </div>
   )
@@ -65,6 +68,7 @@ export function AuditDetailPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const m = useMasters()
+  const { nameOf } = useBranch()
   const audits = useList('audits'), items = useList('stockItems'), adj = useList('adjustments')
   const itemMap = useIndex(items.data)
   const au = audits.data?.find((a) => a.id === id)
@@ -112,7 +116,7 @@ export function AuditDetailPage() {
 
   return (
     <div className="fade-in">
-      <PageHeader back="/stock-audit" title={`${au.auditNo} · ${au.title}`} subtitle={`${m.categoryMap.get(au.categoryId ?? '')?.name ?? 'Whole shop'} · started ${fmtDateTime(au.createdAt)}`}
+      <PageHeader back="/stock-audit" title={`${au.auditNo} · ${au.title}`} subtitle={`${nameOf(au.branchId)} · ${m.categoryMap.get(au.categoryId ?? '')?.name ?? 'All categories'} · started ${fmtDateTime(au.createdAt)}`}
         actions={<><StatusBadge status={au.status} />
           {open && can('audit.manage') && <Button variant="primary" loading={act.submit.pending} onClick={async () => { if (!remaining.length || (await confirm({ title: 'Submit with unscanned items?', message: `${remaining.length} expected item(s) were not scanned and will be reported as MISSING.`, confirmLabel: 'Submit audit' }))) act.submit.run() }}>Finish & submit</Button>}
           {au.status === 'pending_approval' && can('audit.approve') && <><Button variant="danger" onClick={async () => { const n = await confirm({ title: 'Reject audit?', reasonLabel: 'Reason', confirmLabel: 'Reject', danger: true }); if (n) act.reject.run(n) }}>Reject</Button><Button variant="gold" loading={act.approve.pending} onClick={async () => { const n = await confirm({ title: 'Approve & post stock adjustments?', message: `${au.discrepancies.filter((d) => ['missing', 'weight', 'extra'].includes(d.kind)).length} discrepancy item(s) will be adjusted through the stock ledger.`, reasonLabel: 'Adjustment reason', confirmLabel: 'Approve & adjust' }); if (n) act.approve.run(n) }}>Approve & adjust stock</Button></>}</>} />

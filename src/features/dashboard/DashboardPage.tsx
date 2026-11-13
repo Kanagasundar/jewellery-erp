@@ -6,6 +6,7 @@ import { Badge, ErrorState, Spinner, StatusBadge } from '@/components/ui/Feedbac
 import { Card, PageHeader, Stat } from '@/components/ui/Layout'
 import { D, money, sum, weight } from '@/domain/calculations/decimal'
 import { useLowStock } from '@/hooks/useAlerts'
+import { useBranch } from '@/hooks/useBranch'
 import { useIndex, useList, useMasters } from '@/hooks/useData'
 import { addDays, dayKey, monthKey, shortDay, todayKey } from '@/utils/dates'
 import { fmtDateTime, fmtMoney, fmtMoney0, fmtNum, fmtW } from '@/utils/format'
@@ -22,25 +23,27 @@ export default function DashboardPage() {
   const payments = useList('payments')
   const ledger = useList('ledger')
   const m = useMasters()
+  const { scopeId, active } = useBranch()
   const low = useLowStock()
   const itemMap = useIndex(items.data)
 
   const d = useMemo(() => {
     const today = todayKey()
     const month = monthKey(new Date())
-    const live = (sales.data ?? []).filter((s) => s.status === 'completed')
+    const live = (sales.data ?? []).filter((s) => s.status === 'completed' && (!scopeId || s.branchId === scopeId))
     const net = (s: { total: number; returnedValue: number }) => money(D(s.total).minus(s.returnedValue))
     const todaySales = money(sum(live.filter((s) => dayKey(s.date) === today).map(net)))
     const monthSales = money(sum(live.filter((s) => monthKey(s.date) === month).map(net)))
     const todayPurchase = money(sum((pos.data ?? []).filter((p) => dayKey(p.date) === today && !['draft', 'cancelled'].includes(p.status)).map((p) => p.total)))
-    const avail = (items.data ?? []).filter((i) => i.status === 'available')
+    const scopedItems = (items.data ?? []).filter((i) => !scopeId || i.branchId === scopeId)
+    const avail = scopedItems.filter((i) => i.status === 'available')
     const stockValue = money(sum(avail.map((i) => i.costPrice)))
     const wBy = (metalName: string) => {
       const id = m.metals.data?.find((x) => x.name === metalName)?.id
       return weight(sum(avail.filter((i) => i.metalId === id).map((i) => i.netWeight)))
     }
     const byStatus: Record<string, number> = {}
-    for (const i of items.data ?? []) byStatus[i.status] = (byStatus[i.status] ?? 0) + 1
+    for (const i of scopedItems) byStatus[i.status] = (byStatus[i.status] ?? 0) + 1
     const trend = Array.from({ length: 14 }, (_, k) => {
       const key = dayKey(addDays(new Date(), k - 13))
       return { key, label: shortDay(key), sales: money(sum(live.filter((s) => dayKey(s.date) === key).map(net))) }
@@ -65,7 +68,7 @@ export default function DashboardPage() {
       recentPos: [...(pos.data ?? [])].filter((p) => p.status !== 'draft').sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5),
       recentMoves: [...(ledger.data ?? [])].sort((a, b) => b.txnNo.localeCompare(a.txnNo)).slice(0, 7),
     }
-  }, [sales.data, pos.data, items.data, repairs.data, polishing.data, payments.data, ledger.data, m.metals.data, m.categoryMap, m.productMap])
+  }, [sales.data, pos.data, items.data, repairs.data, polishing.data, payments.data, ledger.data, m.metals.data, m.categoryMap, m.productMap, scopeId])
 
   const err = [sales, pos, items, repairs, polishing, payments, ledger].find((q) => q.error)?.error
   if (err) return <ErrorState error={err} onRetry={() => location.reload()} />
@@ -74,7 +77,7 @@ export default function DashboardPage() {
   const modePie = Object.entries(d.modeTotals).map(([name, value]) => ({ name, value }))
   return (
     <div className="fade-in">
-      <PageHeader title="Dashboard" subtitle={`Live view of the shop — ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}`} />
+      <PageHeader title="Dashboard" subtitle={`${active ? active.name : 'All branches'} · live view — ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}`} />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Today’s sales" value={fmtMoney0(d.todaySales)} sub="Net of returns" icon={<TrendingUp size={18} />} />
